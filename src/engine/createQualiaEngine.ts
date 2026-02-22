@@ -51,6 +51,7 @@ uniform float uBoomRing;
 uniform float uBoomAge;
 uniform float uBoomWarp;
 uniform float uBoomFlash;
+uniform float uBoomRecoil;
 
 varying vec2 vUv;
 
@@ -87,13 +88,22 @@ void main() {
   float boomDist = length(boomVec);
   vec2 boomDir = boomDist > 0.0001 ? boomVec / boomDist : vec2(0.0, 1.0);
 
-  float ringRadius = 0.045 + uBoomAge * (0.42 + uWaveSpeed * 0.18);
+  float ringRadius = 0.045 + uBoomAge * (0.4 + uWaveSpeed * 0.16);
   float ringWidth = mix(0.014, 0.042, clamp(uBoomRing, 0.0, 1.0));
-  float ringBand = exp(-pow((boomDist - ringRadius) / max(ringWidth, 0.0001), 2.0));
+  float ringWarpNoise = noise(
+    boomVec * (3.0 + uTurbulence * 2.4) +
+    vec2(uBoomAge * 1.7 + uTime * 0.08, -uTime * 0.12)
+  );
+  float ringWarp = (ringWarpNoise - 0.5) * (0.018 + uBoomRing * 0.026 + uTurbulence * 0.018);
+  float rippleDist = boomDist + ringWarp;
+  float ringBand = exp(-pow((rippleDist - ringRadius) / max(ringWidth, 0.0001), 2.0));
+  float echoRadius = max(0.0, ringRadius - (0.075 + uBoomAge * 0.08));
+  float echoBand = exp(-pow((rippleDist - echoRadius) / max(ringWidth * 1.6, 0.0001), 2.0));
+  ringBand += echoBand * (0.12 + uBoomRing * 0.18);
   float centerCompression = exp(-pow(boomDist / 0.24, 2.0)) * uBoomEnvelope;
   float localPressure = smoothstep(0.95, 0.0, boomDist);
   float pressureWarp =
-    (-centerCompression * 0.015 + ringBand * uBoomWarp * 0.008) * localPressure;
+    (-centerCompression * 0.015 + ringBand * uBoomWarp * 0.009) * localPressure;
   uv += boomDir * pressureWarp;
 
   float angle = radians(uFlowDirection);
@@ -157,7 +167,14 @@ void main() {
   float asymmetry = (presenceNoiseA - 0.5) * (0.18 + uTurbulence * 0.18) +
                     (presenceNoiseB - 0.5) * (0.08 + uBoomEnvelope * 0.08);
   float presenceDist = boomDist * (1.0 + asymmetry);
-  float presenceRadius = 0.19 + slowBreath * 0.045 + uPulseStrength * 0.035 + uBoomEnvelope * 0.11;
+  float recoilDelay = smoothstep(0.03, 0.12, uBoomAge);
+  float recoilSettle = uBoomRecoil * recoilDelay;
+  float presenceRadius =
+    0.19 +
+    slowBreath * 0.045 +
+    uPulseStrength * 0.03 +
+    uBoomEnvelope * 0.11 -
+    recoilSettle * 0.055;
   float presenceCore = exp(-pow(max(presenceDist, 0.0) / max(presenceRadius, 0.0001), 2.15));
   float presenceAura = exp(-pow(max(presenceDist, 0.0) / max(presenceRadius * 2.25, 0.0001), 1.45));
   float presencePeriphery = smoothstep(0.0, 1.0, presenceAura - presenceCore * 0.65);
@@ -178,9 +195,9 @@ void main() {
 
   float thumpRadius = 0.075 + uBoomEnvelope * 0.12;
   float thumpCore = exp(-pow(boomDist / max(thumpRadius, 0.0001), 2.35));
-  float centerIndent = thumpCore * uBoomEnvelope * 0.085;
+  float centerIndent = thumpCore * (uBoomEnvelope * 0.085 + recoilSettle * 0.03);
 
-  float ringAccent = ringBand * (0.012 + 0.13 * uBoomRing) * (0.65 + 0.35 * uPulseStrength);
+  float ringAccent = ringBand * (0.008 + 0.115 * uBoomRing) * (0.65 + 0.35 * uPulseStrength);
   float ringHue = fract(mix(hueA, hueB, 0.42 + pulse * 0.08));
   vec3 ringColor = hsl2rgb(vec3(
     ringHue,
@@ -195,7 +212,7 @@ void main() {
   ));
   float presenceLift =
     presenceAura * (0.02 + slowBreath * 0.01) +
-    presenceCore * (0.028 + uBoomEnvelope * 0.04) +
+    presenceCore * (0.028 + uBoomEnvelope * 0.04 - recoilSettle * 0.01) +
     presenceCore * interiorFlow * 0.026 +
     presencePeriphery * interiorRipple * 0.016 +
     tendrilDetail;
@@ -204,7 +221,7 @@ void main() {
   color *= (1.0 - centerIndent);
   color += presenceColor * presenceLift;
   color += ringColor * ringAccent * (0.4 + 0.2 * uBoomFlash);
-  color += ringColor * thumpCore * (0.018 + uBoomEnvelope * 0.03);
+  color += ringColor * thumpCore * (0.014 + uBoomEnvelope * 0.028 - recoilSettle * 0.005);
   color += vec3(1.0) * ringAccent * uBoomFlash * 0.016;
 
   float vignette = smoothstep(1.45, 0.25 + (1.0 - uVignette) * 0.6, length(uv));
@@ -236,6 +253,7 @@ type Uniforms = {
   uBoomAge: { value: number };
   uBoomWarp: { value: number };
   uBoomFlash: { value: number };
+  uBoomRecoil: { value: number };
 };
 
 function createUniforms(): Uniforms {
@@ -261,6 +279,7 @@ function createUniforms(): Uniforms {
     uBoomAge: { value: 10 },
     uBoomWarp: { value: 0 },
     uBoomFlash: { value: 0 },
+    uBoomRecoil: { value: 0 },
   };
 }
 
@@ -319,6 +338,7 @@ export function createQualiaEngine(
   let impactRing = 0;
   let impactAge = 10;
   let impactFlash = 0;
+  let impactRecoil = 0;
   let lastImpactTriggerMs = -1000;
   let impactSignalSmoothed =
     currentState.pulse_strength * 0.82 +
@@ -362,33 +382,36 @@ export function createQualiaEngine(
     const rise = impactSignalSmoothed - previousImpactSignal;
     previousImpactSignal = impactSignalSmoothed;
 
-    const impactCooldownMs = 90;
+    const impactCooldownMs = 70;
     if (
       timeMs - lastImpactTriggerMs >= impactCooldownMs &&
-      impactSignalSmoothed > 0.18 &&
-      rise > 0.012
+      impactSignalSmoothed > 0.11 &&
+      rise > 0.004
     ) {
       const triggerStrength = clamp01(
-        (impactSignalSmoothed - 0.18) * 2.0 + (rise - 0.012) * 24,
+        (impactSignalSmoothed - 0.11) * 2.3 + (rise - 0.004) * 36,
       );
-      impactEnvelope = Math.max(impactEnvelope, 0.32 + triggerStrength * 0.78);
-      impactRing = Math.max(impactRing, 0.35 + triggerStrength * 0.8);
-      impactFlash = Math.max(impactFlash, 0.12 + triggerStrength * 0.42);
+      impactEnvelope = Math.max(impactEnvelope, 0.18 + triggerStrength * 0.88);
+      impactRing = Math.max(impactRing, 0.18 + triggerStrength * 0.76);
+      impactFlash = Math.max(impactFlash, 0.02 + triggerStrength * 0.22);
+      impactRecoil = Math.max(impactRecoil, 0.15 + triggerStrength * 0.7);
       impactAge = 0;
       lastImpactTriggerMs = timeMs;
     } else {
       impactAge = Math.min(10, impactAge + dt);
     }
 
-    impactEnvelope *= Math.exp(-dt * (4.4 + currentState.wave_speed * 0.65));
-    impactRing *= Math.exp(-dt * 5.8);
-    impactFlash *= Math.exp(-dt * 8.6);
+    impactEnvelope *= Math.exp(-dt * (4.9 + currentState.wave_speed * 0.5));
+    impactRing *= Math.exp(-dt * 4.6);
+    impactFlash *= Math.exp(-dt * 9.2);
+    impactRecoil *= Math.exp(-dt * 2.5);
 
     uniforms.uBoomEnvelope.value = clamp01(impactEnvelope);
     uniforms.uBoomRing.value = clamp01(impactRing);
     uniforms.uBoomAge.value = impactAge;
     uniforms.uBoomWarp.value = clamp01(impactEnvelope * 0.75 + impactRing * 0.55);
     uniforms.uBoomFlash.value = clamp01(impactFlash);
+    uniforms.uBoomRecoil.value = clamp01(impactRecoil);
 
     uniforms.uTime.value = timeMs / 1000;
     copyStateToUniforms(uniforms, currentState);
