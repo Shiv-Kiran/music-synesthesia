@@ -9,6 +9,14 @@ export interface MicPermissionScreenProps {
   onUseDevBypass?: () => void;
 }
 
+const DEV_DEMO_AUDIO_CLIPS = [
+  { href: "/dev-audio/qualia-demo-loop-24s.wav", label: "full loop (24s)" },
+  { href: "/dev-audio/qualia-demo-build-0-10s.wav", label: "build (0-10s)" },
+  { href: "/dev-audio/qualia-demo-peak-10-14s.wav", label: "peak (10-14s)" },
+  { href: "/dev-audio/qualia-demo-drop-14-18s.wav", label: "drop (14-18s)" },
+  { href: "/dev-audio/qualia-demo-accents-20-24s.wav", label: "accents (20-24s)" },
+] as const;
+
 export function MicPermissionScreen({
   supported,
   requesting,
@@ -65,9 +73,27 @@ export function MicPermissionScreen({
       </div>
 
       {showDevBypass ? (
-        <p className="text-xs text-white/40">
-          Dev mode: deterministic synthetic audio lets you test prompts and visuals without a mic.
-        </p>
+        <div className="max-w-lg rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-left">
+          <p className="text-xs text-white/45">
+            Dev mode: deterministic synthetic audio lets you test prompts and visuals without a mic.
+          </p>
+          <p className="mt-2 text-[11px] text-white/35">
+            Preview clips (sonified approximation of the synthetic feature pattern):
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {DEV_DEMO_AUDIO_CLIPS.map((clip) => (
+              <a
+                key={clip.href}
+                href={clip.href}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-full border border-white/12 bg-white/5 px-3 py-1 text-[11px] text-white/75 transition hover:border-white/24 hover:bg-white/10"
+              >
+                {clip.label}
+              </a>
+            ))}
+          </div>
+        </div>
       ) : null}
     </div>
   );
