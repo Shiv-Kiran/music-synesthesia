@@ -9,7 +9,6 @@ import {
 } from "@/audio/calibrate";
 import {
   getDevDemoAudioClipById,
-  type DevDemoAudioClip,
 } from "@/audio/dev-demo-clips";
 import {
   createSyntheticAudioSource,
@@ -164,8 +163,10 @@ export function MicSessionFlow() {
   );
   const devDemoAudioRef = useRef<HTMLAudioElement | null>(null);
   const devDemoPreviewRafRef = useRef<number | null>(null);
-  const devDemoPreviewClipRef = useRef<DevDemoAudioClip | null>(null);
-  const devDemoPreviewSourceRef = useRef<SyntheticAudioSource | null>(null);
+  const devDemoAudioContextRef = useRef<AudioContext | null>(null);
+  const devDemoAudioSourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const devDemoAnalyserRef = useRef<AnalyserNode | null>(null);
+  const devDemoAnalyserBuffersRef = useRef<AudioFeatureBuffers | null>(null);
 
   const supported = useMemo(() => isMicSupported(), []);
   const devBypassEnabled = process.env.NODE_ENV !== "production";
@@ -204,8 +205,24 @@ export function MicSessionFlow() {
       setActiveDevDemoClipId(null);
       setDevDemoPlaying(false);
       setDevDemoPlaybackError(null);
+      try {
+        devDemoAudioSourceNodeRef.current?.disconnect();
+      } catch {
+        // no-op
+      }
+      try {
+        devDemoAnalyserRef.current?.disconnect();
+      } catch {
+        // no-op
+      }
+      devDemoAudioSourceNodeRef.current = null;
+      devDemoAnalyserRef.current = null;
+      devDemoAnalyserBuffersRef.current = null;
+      const demoAudioContext = devDemoAudioContextRef.current;
+      devDemoAudioContextRef.current = null;
       setAudioFeatures({ ...EMPTY_AUDIO_FEATURES });
       setAudioGateState(null);
+      void demoAudioContext?.close();
       void controller?.dispose();
     };
   }, [resetVisualState, setAudioFeatures, setAudioGateState]);
@@ -333,7 +350,11 @@ export function MicSessionFlow() {
     }
 
     const handlePlay = () => setDevDemoPlaying(true);
-    const handlePause = () => setDevDemoPlaying(false);
+    const handlePause = () => {
+      setDevDemoPlaying(false);
+      stopDevDemoPreviewLoop();
+      settleVisualPreviewRef.current(false);
+    };
     const handleEnded = () => {
       setDevDemoPlaying(false);
       stopDevDemoPreviewLoop();
@@ -350,6 +371,58 @@ export function MicSessionFlow() {
     };
   }, []);
 
+  const ensureDevDemoAudioAnalyser = async (): Promise<{
+    analyser: AnalyserNode;
+    buffers: AudioFeatureBuffers;
+  }> => {
+    const audio = devDemoAudioRef.current;
+    if (!audio) {
+      throw new Error("Demo audio element is not available.");
+    }
+
+    let audioContext = devDemoAudioContextRef.current;
+    if (!audioContext) {
+      const AudioContextCtor =
+        window.AudioContext ||
+        (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
+      if (!AudioContextCtor) {
+        throw new Error("Web Audio is not supported in this browser.");
+      }
+
+      audioContext = new AudioContextCtor();
+      devDemoAudioContextRef.current = audioContext;
+    }
+
+    if (audioContext.state === "suspended") {
+      await audioContext.resume();
+    }
+
+    let analyser = devDemoAnalyserRef.current;
+    if (!analyser) {
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.55;
+      devDemoAnalyserRef.current = analyser;
+    }
+
+    let sourceNode = devDemoAudioSourceNodeRef.current;
+    if (!sourceNode) {
+      sourceNode = audioContext.createMediaElementSource(audio);
+      sourceNode.connect(analyser);
+      analyser.connect(audioContext.destination);
+      devDemoAudioSourceNodeRef.current = sourceNode;
+    }
+
+    let buffers = devDemoAnalyserBuffersRef.current;
+    if (!buffers) {
+      buffers = createAudioFeatureBuffers(analyser.fftSize);
+      devDemoAnalyserBuffersRef.current = buffers;
+    }
+
+    return { analyser, buffers };
+  };
+
   const stopDevDemoPlayback = () => {
     stopDevDemoPreviewLoop();
     const audio = devDemoAudioRef.current;
@@ -364,22 +437,14 @@ export function MicSessionFlow() {
     setDevDemoPlaying(false);
     setActiveDevDemoClipId(null);
     setDevDemoPlaybackError(null);
-    devDemoPreviewClipRef.current = null;
     settleVisualPreview(false);
   };
 
-  const startDevDemoPreviewLoop = () => {
+  const startDevDemoPreviewLoop = (params: {
+    analyser: AnalyserNode;
+    buffers: AudioFeatureBuffers;
+  }) => {
     stopDevDemoPreviewLoop();
-
-    const audio = devDemoAudioRef.current;
-    const clip = devDemoPreviewClipRef.current;
-    if (!audio || !clip) {
-      return;
-    }
-
-    if (!devDemoPreviewSourceRef.current) {
-      devDemoPreviewSourceRef.current = createSyntheticAudioSource();
-    }
 
     const loop = () => {
       if (disposedRef.current) {
@@ -387,18 +452,14 @@ export function MicSessionFlow() {
       }
 
       const previewAudio = devDemoAudioRef.current;
-      const previewClip = devDemoPreviewClipRef.current;
-      const previewSource = devDemoPreviewSourceRef.current;
-      if (!previewAudio || !previewClip || !previewSource) {
+      if (!previewAudio) {
         return;
       }
 
       if (!previewAudio.paused) {
-        const syntheticTimeMs =
-          (previewClip.synthetic_start_s + Math.max(0, previewAudio.currentTime)) * 1000;
-        const features = previewSource.sampleFeatures(syntheticTimeMs);
-        const pseudoThresholdRms = 0.014;
-        const gateActive = features.rms >= pseudoThresholdRms * 0.86;
+        const features = sampleAudioFeatures(params.analyser, params.buffers);
+        const pseudoThresholdRms = 0.01;
+        const gateActive = features.rms >= pseudoThresholdRms * 0.8;
         const intensity = Math.min(Math.max(features.rms / pseudoThresholdRms, 0), 3);
         applyAudioReactivePreview(features, gateActive, intensity);
       }
@@ -777,10 +838,10 @@ export function MicSessionFlow() {
         audio.load();
       }
 
-      devDemoPreviewClipRef.current = clip;
+      const analyserControls = await ensureDevDemoAudioAnalyser();
       setActiveDevDemoClipId(clip.id);
       await audio.play();
-      startDevDemoPreviewLoop();
+      startDevDemoPreviewLoop(analyserControls);
     } catch (error) {
       setDevDemoPlaybackError(
         error instanceof Error ? error.message : "Could not play demo clip.",
