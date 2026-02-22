@@ -269,12 +269,13 @@ export function MicSessionFlow() {
       const clamped = Math.min(Math.max(intensity, 0), 3);
       applyDelta({
         set: {
-          pulse_strength: Math.min(0.2 + clamped * 0.28, 1),
-          turbulence: Math.min(0.18 + clamped * 0.16, 1),
-          brightness: Math.min(0.22 + clamped * 0.08, 0.75),
-          hue_chaos: Math.min(0.1 + clamped * 0.12, 1),
-          particle_density: Math.min(0.25 + clamped * 0.14, 1),
-          wave_speed: Math.min(0.35 + clamped * 0.22, 2),
+          pulse_strength: Math.min(0.24 + clamped * 0.34, 1),
+          turbulence: Math.min(0.2 + clamped * 0.14, 1),
+          brightness: Math.min(0.22 + clamped * 0.045, 0.42),
+          hue_chaos: Math.min(0.08 + clamped * 0.045, 0.28),
+          particle_density: Math.min(0.25 + clamped * 0.12, 1),
+          wave_speed: Math.min(0.34 + clamped * 0.18, 2),
+          blur: Math.max(0.04, 0.1 - clamped * 0.012),
         },
         lerp_ms: 90,
         source: "audio",
@@ -290,6 +291,7 @@ export function MicSessionFlow() {
         hue_chaos: 0.12,
         particle_density: 0.3,
         wave_speed: 0.35,
+        blur: 0.08,
       },
       lerp_ms: 220,
       source: "audio",
@@ -310,30 +312,36 @@ export function MicSessionFlow() {
     }
 
     const intensityBias = Math.min(Math.max(intensity, 0), 3);
+    const transient = clamp01(
+      features.bass_energy * 0.42 +
+        features.high_energy * 0.18 +
+        features.zero_crossing_rate * 0.9 +
+        Math.max(0, features.rms - 0.02) * 8,
+    );
+    const impact = clamp01(
+      features.bass_energy * 0.58 +
+        features.rms * 2.6 +
+        transient * 0.72 +
+        intensityBias * 0.06,
+    );
+    const textureDrive = clamp01(
+      features.mid_energy * 0.46 + features.high_energy * 0.22 + transient * 0.2,
+    );
+    const brightnessLift = clamp01(features.rms * 0.9 + features.spectral_centroid * 0.08);
+
     applyDelta({
       set: {
-        pulse_strength: clamp01(
-          0.12 + features.bass_energy * 0.58 + features.rms * 2.2 + intensityBias * 0.05,
-        ),
-        turbulence: clamp01(
-          0.1 + features.high_energy * 0.48 + features.zero_crossing_rate * 0.65,
-        ),
-        brightness: clamp01(
-          0.16 +
-            features.rms * 1.9 +
-            features.spectral_centroid * 0.16 +
-            intensityBias * 0.03,
-        ),
-        hue_chaos: clamp01(
-          0.06 + features.high_energy * 0.34 + features.zero_crossing_rate * 0.3,
-        ),
+        pulse_strength: clamp01(0.16 + impact * 0.84),
+        turbulence: clamp01(0.12 + textureDrive * 0.44 + transient * 0.22),
+        brightness: clamp01(0.2 + brightnessLift * 0.15 + impact * 0.08),
+        hue_chaos: clamp01(0.06 + features.high_energy * 0.12 + transient * 0.08),
         particle_density: clamp01(
-          0.18 + features.mid_energy * 0.32 + features.high_energy * 0.22,
+          0.2 + features.mid_energy * 0.22 + features.high_energy * 0.12 + impact * 0.1,
         ),
         wave_speed: clampWaveSpeed(
-          0.2 + features.bass_energy * 0.7 + features.mid_energy * 0.45,
+          0.18 + features.bass_energy * 0.62 + features.mid_energy * 0.34 + transient * 0.18,
         ),
-        blur: clamp01(0.03 + (1 - features.spectral_centroid) * 0.1),
+        blur: clamp01(0.045 + (1 - features.spectral_centroid) * 0.065 - impact * 0.025),
       },
       lerp_ms: 80,
       source: "audio",
