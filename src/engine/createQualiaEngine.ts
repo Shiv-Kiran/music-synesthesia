@@ -46,6 +46,11 @@ uniform float uDepth;
 uniform float uScale;
 uniform float uBlur;
 uniform float uVignette;
+uniform float uFocalIntensity;
+uniform float uFocalSize;
+uniform float uFocalSharpness;
+uniform float uFocalDrift;
+uniform float uBackgroundReactivity;
 
 varying vec2 vUv;
 
@@ -66,6 +71,19 @@ float noise(vec2 p) {
   return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
 }
 
+float fbm(vec2 p) {
+  float value = 0.0;
+  float amp = 0.55;
+  value += noise(p) * amp;
+  p = p * 2.03 + vec2(13.2, -8.7);
+  amp *= 0.5;
+  value += noise(p) * amp;
+  p = p * 2.01 + vec2(-7.1, 5.3);
+  amp *= 0.5;
+  value += noise(p) * amp;
+  return value;
+}
+
 vec3 hsl2rgb(vec3 c) {
   vec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
   rgb = rgb * rgb * (3.0 - 2.0 * rgb);
@@ -79,52 +97,111 @@ void main() {
 
   float angle = radians(uFlowDirection);
   mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
-  uv = rot * uv;
+  vec2 uvFlow = rot * uv;
+  float pulseBase = sin(uTime * (0.9 + uWaveSpeed * 2.0)) * 0.5 + 0.5;
+  float pulse = mix(pulseBase * 0.2, pulseBase, clamp(uPulseStrength, 0.0, 1.0));
 
-  float scale = mix(0.7, 3.0, clamp(uScale, 0.0, 1.0));
-  float t = uTime * (0.15 + uWaveSpeed * 0.6);
-  vec2 q = uv * scale;
+  float grain = (hash(gl_FragCoord.xy * 0.013 + vec2(uTime * 0.1)) - 0.5) * 0.05;
+  float depthField = smoothstep(1.25, 0.05, length(uv) * mix(1.16, 0.72, uDepth));
 
-  float n1 = noise(q * (1.4 + uTurbulence * 3.0) + vec2(t * 0.8, -t * 0.5));
-  float n2 = noise((q + 3.0) * (2.2 + uTurbulence * 4.0) - vec2(t * 0.4, t * 0.9));
-  float ridges = abs(sin((n1 * 3.5 + n2 * 2.0 + t) * 3.14159));
+  // Background layer: slower atmospheric flow, lower contrast, mild audio response.
+  float bgScale = mix(0.55, 2.15, clamp(uScale, 0.0, 1.0));
+  float bgT = uTime * (0.05 + uWaveSpeed * (0.15 + 0.18 * uBackgroundReactivity));
+  vec2 bgQ = uvFlow * bgScale;
+  float bg1 = fbm(bgQ * (1.0 + uTurbulence * 1.4) + vec2(bgT * 0.45, -bgT * 0.23));
+  float bg2 = fbm((bgQ + vec2(4.3, -2.2)) * (1.35 + uTurbulence * 1.9) - vec2(bgT * 0.18, bgT * 0.31));
+  float bgFlow = smoothstep(0.1, 0.9, bg1 * 0.85 + bg2 * 0.45 + pulse * (0.08 + 0.12 * uBackgroundReactivity));
+  float bgRidge = abs(sin((bg1 * 2.6 + bg2 * 1.3 + bgT * 0.6) * 3.14159));
+  float bgSparkle = step(
+    1.0 - (0.007 + uParticleDensity * 0.03 * (0.35 + 0.65 * uBackgroundReactivity)),
+    hash(floor((uvFlow + bgT * 0.01) * 56.0))
+  );
+  bgSparkle *= (0.18 + 0.22 * pulse);
 
-  float pulse = sin(uTime * (0.8 + uWaveSpeed * 2.0)) * 0.5 + 0.5;
-  pulse = mix(0.0, pulse, uPulseStrength);
-
-  float haze = smoothstep(0.0, 1.0, n1 * 0.8 + ridges * 0.4 + pulse * 0.25);
-  float depthField = smoothstep(1.2, 0.05, length(uv) * mix(1.2, 0.7, uDepth));
-  float grain = (hash(gl_FragCoord.xy * 0.013 + vec2(uTime * 0.1)) - 0.5) * 0.06;
-
-  float sparkle = step(1.0 - (0.02 + uParticleDensity * 0.08), hash(floor((uv + t * 0.02) * 70.0)));
-  sparkle *= 0.35 + 0.65 * pulse;
-
-  float hueMix = fract(haze + n2 * (0.08 + uHueChaos * 0.25) + pulse * 0.05);
   float hueA = fract(uHuePair.x / 360.0 + (uMoodPole * 0.03));
   float hueB = fract(uHuePair.y / 360.0 - (uMoodPole * 0.02));
-  float hue = mix(hueA, hueB, hueMix);
-  hue = fract(hue + (n1 - 0.5) * uHueChaos * 0.18);
-
-  float sat = clamp(uSaturation + sparkle * 0.12 + uTurbulence * 0.05, 0.0, 1.0);
-  float light = clamp(
-    uBrightness * 0.6 +
-    haze * 0.28 +
-    depthField * 0.14 +
-    sparkle * 0.18 +
-    grain * 0.4,
+  float bgHueMix = fract(bgFlow + bg2 * (0.03 + uHueChaos * 0.12) + bgRidge * 0.04);
+  float bgHue = mix(hueA, hueB, bgHueMix);
+  bgHue = fract(bgHue + (bg1 - 0.5) * uHueChaos * 0.07);
+  float bgSat = clamp(uSaturation * 0.78 + bgSparkle * 0.05 + uHueChaos * 0.04, 0.0, 1.0);
+  float bgLight = clamp(
+    uBrightness * 0.34 +
+    bgFlow * 0.19 +
+    bgRidge * 0.06 +
+    depthField * 0.12 +
+    bgSparkle * 0.14 +
+    grain * 0.35,
     0.0,
     1.0
   );
+  vec3 bgColor = hsl2rgb(vec3(bgHue, bgSat, bgLight));
 
-  vec3 color = hsl2rgb(vec3(hue, sat, light));
+  // Foreground focal core: soft bloom body + crisp accents, pulse-first response.
+  vec2 drift = vec2(
+    sin(uTime * 0.19 + uFlowDirection * 0.01),
+    cos(uTime * 0.16 + uMoodPole * 1.7)
+  ) * vec2(0.075, 0.04) * clamp(uFocalDrift, 0.0, 1.0);
+  vec2 focalCenter = vec2(0.0, 0.12) + drift;
+  focalCenter.y = clamp(focalCenter.y, 0.04, 0.22);
+  focalCenter.x = clamp(focalCenter.x, -0.14 * aspect, 0.14 * aspect);
 
-  float blurGlow = smoothstep(1.25, 0.0, length(uv)) * uBlur * 0.25;
-  color += blurGlow;
+  vec2 fv = uv - focalCenter;
+  vec2 focalUv = rot * fv;
+
+  float focalBaseRadius = mix(0.22, 0.72, clamp(uFocalSize, 0.0, 1.0));
+  float pulseAmp = (0.05 + 0.22 * uFocalIntensity) * (0.2 + 0.8 * clamp(uPulseStrength, 0.0, 1.0));
+  float focalRadius = focalBaseRadius * (1.0 + pulseAmp * (0.25 + 0.75 * pulse));
+
+  float focalNoiseA = noise(focalUv * (2.2 + uTurbulence * 3.8) + vec2(uTime * 0.22, -uTime * 0.17));
+  float focalNoiseB = noise((focalUv + vec2(2.8, -1.4)) * (4.0 + uTurbulence * 5.0) - vec2(uTime * 0.18, uTime * 0.27));
+  float focalDeform = (focalNoiseA - 0.5) * (0.04 + uTurbulence * 0.17) + (focalNoiseB - 0.5) * 0.05;
+
+  float focalDist = length(focalUv * vec2(1.0, 1.08)) + focalDeform;
+  float coreBody = exp(-pow(focalDist / max(focalRadius, 0.0001), 2.0));
+  float halo = exp(-pow(focalDist / max(focalRadius * (1.7 + uBlur * 0.9), 0.0001), 2.2));
+
+  float ridgePhase = focalNoiseB + focalDist * (3.7 + uFocalSharpness * 2.6) - uTime * (0.22 + uWaveSpeed * 0.32);
+  float ridge = pow(
+    abs(sin(ridgePhase * 6.28318)),
+    mix(5.0, 18.0, clamp(uFocalSharpness, 0.0, 1.0))
+  );
+  float edgeOuter = smoothstep(focalRadius * 1.45, focalRadius * 0.78, focalDist);
+  float edgeInner = smoothstep(focalRadius * 0.78, focalRadius * 0.36, focalDist);
+  float edgeBand = clamp(edgeOuter - edgeInner, 0.0, 1.0);
+  float accent = ridge * edgeBand * (0.08 + 0.62 * uFocalSharpness) * (0.2 + 0.8 * pulse);
+
+  float focalMask = clamp(coreBody * (0.65 + 0.45 * uFocalIntensity) + halo * 0.35, 0.0, 1.0);
+  float focalHue = fract(
+    mix(hueA, hueB, 0.35 + 0.18 * sin(uTime * 0.05)) +
+    (focalNoiseA - 0.5) * uHueChaos * 0.1 +
+    pulse * 0.01
+  );
+  float focalSat = clamp(uSaturation * 0.92 + accent * 0.16 + uFocalSharpness * 0.06, 0.0, 1.0);
+  float focalLight = clamp(
+    uBrightness * 0.46 +
+    halo * 0.24 +
+    coreBody * 0.44 +
+    accent * 0.5 +
+    pulse * 0.06,
+    0.0,
+    1.0
+  );
+  vec3 focalColor = hsl2rgb(vec3(focalHue, focalSat, focalLight));
+  focalColor += vec3(1.0, 0.98, 1.0) * accent * (0.04 + 0.16 * uFocalSharpness);
+
+  vec3 color = bgColor;
+  float focalComposite = clamp(focalMask * (0.35 + 0.75 * uFocalIntensity) + halo * 0.12, 0.0, 1.0);
+  color = mix(color, color + focalColor, focalComposite);
+  color += focalColor * accent * 0.12;
+
+  float centerGlow = smoothstep(focalRadius * 2.4, 0.0, focalDist) * uBlur * (0.08 + 0.12 * uFocalIntensity);
+  color += centerGlow;
+  color += grain * 0.12;
 
   float vignette = smoothstep(1.45, 0.25 + (1.0 - uVignette) * 0.6, length(uv));
   color *= mix(1.0, vignette, clamp(uVignette, 0.0, 1.0));
 
-  gl_FragColor = vec4(color, 1.0);
+  gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
 }
 `;
 
@@ -145,6 +222,11 @@ type Uniforms = {
   uScale: { value: number };
   uBlur: { value: number };
   uVignette: { value: number };
+  uFocalIntensity: { value: number };
+  uFocalSize: { value: number };
+  uFocalSharpness: { value: number };
+  uFocalDrift: { value: number };
+  uBackgroundReactivity: { value: number };
 };
 
 function createUniforms(): Uniforms {
@@ -165,6 +247,11 @@ function createUniforms(): Uniforms {
     uScale: { value: DEFAULT_VISUAL_STATE.scale },
     uBlur: { value: DEFAULT_VISUAL_STATE.blur },
     uVignette: { value: DEFAULT_VISUAL_STATE.vignette },
+    uFocalIntensity: { value: DEFAULT_VISUAL_STATE.focal_intensity },
+    uFocalSize: { value: DEFAULT_VISUAL_STATE.focal_size },
+    uFocalSharpness: { value: DEFAULT_VISUAL_STATE.focal_sharpness },
+    uFocalDrift: { value: DEFAULT_VISUAL_STATE.focal_drift },
+    uBackgroundReactivity: { value: DEFAULT_VISUAL_STATE.background_reactivity },
   };
 }
 
@@ -183,6 +270,11 @@ function copyStateToUniforms(uniforms: Uniforms, state: VisualState): void {
   uniforms.uScale.value = state.scale;
   uniforms.uBlur.value = state.blur;
   uniforms.uVignette.value = state.vignette;
+  uniforms.uFocalIntensity.value = state.focal_intensity;
+  uniforms.uFocalSize.value = state.focal_size;
+  uniforms.uFocalSharpness.value = state.focal_sharpness;
+  uniforms.uFocalDrift.value = state.focal_drift;
+  uniforms.uBackgroundReactivity.value = state.background_reactivity;
 }
 
 export function createQualiaEngine(
