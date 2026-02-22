@@ -121,8 +121,16 @@ export function EngineSandbox() {
               and never touches prompts or audio directly.
             </p>
           </div>
-          <div className="rounded-full border border-white/15 bg-black/30 px-3 py-1 text-xs text-white/70 backdrop-blur">
-            target mood: {moodPole.toFixed(2)}
+          <div className="flex items-center gap-2">
+            <a
+              href="/session"
+              className="rounded-full border border-white/20 bg-black/30 px-3 py-1 text-xs text-white/75 backdrop-blur transition hover:border-white/35 hover:text-white"
+            >
+              mic flow →
+            </a>
+            <div className="rounded-full border border-white/15 bg-black/30 px-3 py-1 text-xs text-white/70 backdrop-blur">
+              target mood: {moodPole.toFixed(2)}
+            </div>
           </div>
         </header>
 
@@ -175,4 +183,3 @@ export function EngineSandbox() {
     </div>
   );
 }
-
