@@ -55,5 +55,28 @@ describe("useQualiaStore", () => {
 
     expect(targetVisualState.mood_pole).toBe(1);
   });
-});
 
+  it("stores audio features and gate state snapshots", () => {
+    const store = useQualiaStore.getState();
+
+    store.setAudioFeatures({
+      rms: 0.04,
+      bass_energy: 0.6,
+      mid_energy: 0.4,
+      high_energy: 0.2,
+      spectral_centroid: 0.55,
+      zero_crossing_rate: 0.12,
+    });
+    store.setAudioGateState({
+      noise_floor_rms: 0.01,
+      energy_threshold_rms: 0.02,
+      gated_active: true,
+      calibrated_at: 123,
+    });
+
+    const state = useQualiaStore.getState();
+    expect(state.audioFeatures.bass_energy).toBeCloseTo(0.6);
+    expect(state.audioGateState?.gated_active).toBe(true);
+    expect(state.audioGateState?.calibrated_at).toBe(123);
+  });
+});
