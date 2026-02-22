@@ -20,9 +20,21 @@ import {
 } from "@/audio/features";
 import { createMicInputController, isMicSupported, type MicInputController } from "@/audio/mic";
 import type { AudioFeatures, AudioGateState } from "@/contracts/audio";
+import { PROMPT_LIBRARY } from "@/content/prompts";
+import {
+  createPromptMachineState,
+  respondToPrompt,
+  tickPromptMachine,
+} from "@/prompt/machine";
+import { detectPromptAudioEvent } from "@/prompt/triggers";
+import type {
+  PromptMachineEvent,
+  PromptMachineState,
+} from "@/prompt/prompt-types";
 import { useQualiaStore } from "@/state/qualia-store";
 import { MicCalibrationScreen } from "@/ui/MicCalibrationScreen";
 import { MicPermissionScreen } from "@/ui/MicPermissionScreen";
+import { PromptOverlay } from "@/ui/PromptOverlay";
 import { MicTestScreen } from "@/ui/MicTestScreen";
 import { SessionCanvas } from "@/ui/SessionCanvas";
 
@@ -56,6 +68,21 @@ const INITIAL_FEATURE_STATS: MicFeatureStats = {
   gateActive: false,
 };
 
+interface PromptResponseDebug {
+  chipLabel: string;
+  responseLatencyMs: number;
+  promptText: string;
+  atMs: number;
+}
+
+function getNowMs(): number {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+
+  return Date.now();
+}
+
 function getMicErrorMessage(error: unknown): string {
   if (!error || typeof error !== "object") {
     return "Could not access the microphone. Please try again.";
@@ -75,6 +102,10 @@ function getMicErrorMessage(error: unknown): string {
   return domError.message || "Could not access the microphone. Please try again.";
 }
 
+const PROMPT_DEFINITION_BY_ID = Object.fromEntries(
+  PROMPT_LIBRARY.map((definition) => [definition.id, definition]),
+);
+
 export function MicSessionFlow() {
   const resetVisualState = useQualiaStore((state) => state.resetVisualState);
   const applyDelta = useQualiaStore((state) => state.applyDelta);
@@ -87,6 +118,11 @@ export function MicSessionFlow() {
   const [previewStats, setPreviewStats] = useState<MicPreviewStats>(INITIAL_PREVIEW_STATS);
   const [featureStats, setFeatureStats] = useState<MicFeatureStats>(INITIAL_FEATURE_STATS);
   const [autoAdvanceInMs, setAutoAdvanceInMs] = useState<number | null>(null);
+  const [promptMachineState, setPromptMachineState] = useState<PromptMachineState>(() =>
+    createPromptMachineState(0),
+  );
+  const [promptZoneHeld, setPromptZoneHeld] = useState(false);
+  const [lastPromptResponse, setLastPromptResponse] = useState<PromptResponseDebug | null>(null);
 
   const micControllerRef = useRef<MicInputController | null>(null);
   const featureBuffersRef = useRef<AudioFeatureBuffers | null>(null);
@@ -101,6 +137,11 @@ export function MicSessionFlow() {
   const lastStoreAudioWriteAtRef = useRef<number>(0);
   const autoAdvanceDeadlineRef = useRef<number | null>(null);
   const disposedRef = useRef(false);
+  const sessionStartedAtRef = useRef<number>(0);
+  const promptMachineRef = useRef<PromptMachineState>(createPromptMachineState(0));
+  const previousAudioFeaturesForPromptRef = useRef<AudioFeatures | null>(null);
+  const lastPromptUiSyncAtRef = useRef<number>(0);
+  const promptZoneHeldRef = useRef(false);
 
   const supported = useMemo(() => isMicSupported(), []);
 
@@ -124,6 +165,43 @@ export function MicSessionFlow() {
       void controller?.dispose();
     };
   }, [resetVisualState, setAudioFeatures, setAudioGateState]);
+
+  const resetPromptMachineRuntime = (nowMs = 0) => {
+    const nextPromptState = createPromptMachineState(nowMs);
+    promptMachineRef.current = nextPromptState;
+    lastPromptUiSyncAtRef.current = 0;
+    previousAudioFeaturesForPromptRef.current = null;
+    promptZoneHeldRef.current = false;
+    setPromptMachineState(nextPromptState);
+    setPromptZoneHeld(false);
+    setLastPromptResponse(null);
+  };
+
+  const syncPromptUiState = (
+    nextPromptState: PromptMachineState,
+    nowMs: number,
+    force = false,
+  ) => {
+    if (force || nowMs - lastPromptUiSyncAtRef.current >= 100) {
+      lastPromptUiSyncAtRef.current = nowMs;
+      setPromptMachineState(nextPromptState);
+    }
+  };
+
+  const handlePromptEvents = (events: PromptMachineEvent[], nowMs: number) => {
+    for (const event of events) {
+      if (event.type !== "prompt_responded") {
+        continue;
+      }
+
+      setLastPromptResponse({
+        chipLabel: event.chip_label,
+        responseLatencyMs: event.response_latency_ms,
+        promptText: event.prompt.text,
+        atMs: nowMs,
+      });
+    }
+  };
 
   const settleVisualPreview = (active: boolean, intensity = 0) => {
     if (active) {
@@ -230,6 +308,9 @@ export function MicSessionFlow() {
 
   const enterReady = () => {
     setAutoAdvanceInMs(null);
+    const readyStartedAt = getNowMs();
+    sessionStartedAtRef.current = readyStartedAt;
+    resetPromptMachineRuntime(readyStartedAt);
     startReadyLoop();
   };
 
@@ -249,6 +330,8 @@ export function MicSessionFlow() {
     setPreviewStats(INITIAL_PREVIEW_STATS);
     setFeatureStats(INITIAL_FEATURE_STATS);
     setAutoAdvanceInMs(null);
+    sessionStartedAtRef.current = 0;
+    resetPromptMachineRuntime(0);
     setAudioFeatures({ ...EMPTY_AUDIO_FEATURES });
     setAudioGateState(null);
     resetVisualState();
@@ -350,6 +433,39 @@ export function MicSessionFlow() {
         return;
       }
 
+      const previousPromptState = promptMachineRef.current;
+      const sessionElapsedS =
+        sessionStartedAtRef.current > 0
+          ? Math.max(0, (timeMs - sessionStartedAtRef.current) / 1000)
+          : 0;
+      const detectedPromptAudioEvent = detectPromptAudioEvent({
+        current: frame.features,
+        previous: previousAudioFeaturesForPromptRef.current,
+        gate: frame.decision.gate_state,
+      });
+      previousAudioFeaturesForPromptRef.current = frame.features;
+
+      const requestedPromptTrigger =
+        detectedPromptAudioEvent ?? (sessionElapsedS >= 20 ? "time" : null);
+
+      const promptTickResult = tickPromptMachine(
+        previousPromptState,
+        {
+          now_ms: timeMs,
+          session_elapsed_s: sessionElapsedS,
+          hold_pointer_near_prompt: promptZoneHeldRef.current,
+          requested_trigger: requestedPromptTrigger,
+        },
+        PROMPT_LIBRARY,
+      );
+      promptMachineRef.current = promptTickResult.state;
+
+      const promptChanged =
+        previousPromptState.lifecycle !== promptTickResult.state.lifecycle ||
+        previousPromptState.active_prompt?.id !== promptTickResult.state.active_prompt?.id;
+      handlePromptEvents(promptTickResult.events, timeMs);
+      syncPromptUiState(promptTickResult.state, timeMs, promptChanged || promptTickResult.events.length > 0);
+
       if (timeMs - lastUiStatsAtRef.current >= 100) {
         lastUiStatsAtRef.current = timeMs;
         setFeatureStats({
@@ -445,6 +561,38 @@ export function MicSessionFlow() {
     enterReady();
   };
 
+  const handlePromptChipSelect = (chipId: string, chipLabel: string) => {
+    const nowMs = getNowMs();
+    const currentPromptState = promptMachineRef.current;
+    const activePrompt = currentPromptState.active_prompt;
+    if (!activePrompt) {
+      return;
+    }
+
+    const promptDefinition = PROMPT_DEFINITION_BY_ID[activePrompt.definition_id];
+    const chipDelta = promptDefinition?.chip_delta_map?.[chipId];
+    if (chipDelta) {
+      applyDelta(chipDelta);
+    }
+
+    const responseResult = respondToPrompt(currentPromptState, {
+      now_ms: nowMs,
+      chip_id: chipId,
+      chip_label: chipLabel,
+    });
+    promptMachineRef.current = responseResult.state;
+    handlePromptEvents(responseResult.events, nowMs);
+    syncPromptUiState(responseResult.state, nowMs, true);
+
+    promptZoneHeldRef.current = false;
+    setPromptZoneHeld(false);
+  };
+
+  const handlePromptZoneHoldChange = (held: boolean) => {
+    promptZoneHeldRef.current = held;
+    setPromptZoneHeld(held);
+  };
+
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-[#070510] text-white">
       <div className="absolute inset-0">
@@ -485,10 +633,10 @@ export function MicSessionFlow() {
               mic is ready
             </h2>
             <p className="mt-2 text-sm text-white/70 sm:text-base">
-              PR-04 complete: permission, calibration, energy gate, and mic test are working.
+              prompts now drift in with deterministic chip responses while the mic drives the field.
             </p>
             <p className="mt-3 text-xs text-white/50">
-              Next PRs will add prompt flow, mood bar, and session recording on this screen.
+              Mood bar and session recording are next. Chip taps update visuals instantly and dismiss the prompt.
             </p>
             <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4 text-left">
               <div className="mb-3 flex items-center justify-between text-xs text-white/55">
@@ -510,6 +658,18 @@ export function MicSessionFlow() {
                 <div>zcr: {featureStats.zero_crossing_rate.toFixed(3)}</div>
               </div>
             </div>
+            {lastPromptResponse ? (
+              <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-left text-xs text-white/65">
+                <div className="uppercase tracking-[0.18em] text-white/45">last prompt</div>
+                <div className="mt-1 truncate text-white/80">{lastPromptResponse.promptText}</div>
+                <div className="mt-1">
+                  <span className="text-white/50">chip:</span> {lastPromptResponse.chipLabel}
+                  <span className="mx-2 text-white/25">•</span>
+                  <span className="text-white/50">latency:</span>{" "}
+                  {Math.round(lastPromptResponse.responseLatencyMs)}ms
+                </div>
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={resetToPermission}
@@ -520,6 +680,16 @@ export function MicSessionFlow() {
           </div>
         ) : null}
       </div>
+
+      {phase === "ready" ? (
+        <PromptOverlay
+          prompt={promptMachineState.active_prompt}
+          lifecycle={promptMachineState.lifecycle}
+          holdTimer={promptZoneHeld}
+          onChipSelect={handlePromptChipSelect}
+          onPromptZoneHoldChange={handlePromptZoneHoldChange}
+        />
+      ) : null}
     </div>
   );
 }
