@@ -47,6 +47,15 @@ export function interpolateVisualState(
     scale: lerp(current.scale, target.scale, t),
     blur: lerp(current.blur, target.blur, t),
     vignette: lerp(current.vignette, target.vignette, t),
+    focal_intensity: lerp(current.focal_intensity, target.focal_intensity, t),
+    focal_size: lerp(current.focal_size, target.focal_size, t),
+    focal_sharpness: lerp(current.focal_sharpness, target.focal_sharpness, t),
+    focal_drift: lerp(current.focal_drift, target.focal_drift, t),
+    background_reactivity: lerp(
+      current.background_reactivity,
+      target.background_reactivity,
+      t,
+    ),
   };
 }
 

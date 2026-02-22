@@ -12,8 +12,8 @@ describe("useQualiaStore", () => {
     const { applyDelta } = useQualiaStore.getState();
 
     applyDelta({
-      set: { hue_primary: 355, brightness: 0.9 },
-      add: { hue_primary: 20, brightness: 1, mood_pole: -4 },
+      set: { hue_primary: 355, brightness: 0.9, focal_intensity: 0.4 },
+      add: { hue_primary: 20, brightness: 1, mood_pole: -4, focal_intensity: 0.7 },
       lerp_ms: 1500,
       source: "chip",
     });
@@ -22,6 +22,7 @@ describe("useQualiaStore", () => {
     expect(state.targetVisualState.hue_primary).toBe(15);
     expect(state.targetVisualState.brightness).toBe(1);
     expect(state.targetVisualState.mood_pole).toBe(-1);
+    expect(state.targetVisualState.focal_intensity).toBe(1);
     expect(state.visualState.hue_primary).toBe(DEFAULT_VISUAL_STATE.hue_primary);
   });
 

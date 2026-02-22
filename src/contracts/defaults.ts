@@ -21,6 +21,11 @@ export const DEFAULT_VISUAL_STATE: VisualState = {
   scale: 0.42,
   blur: 0.08,
   vignette: 0.24,
+  focal_intensity: 0.62,
+  focal_size: 0.48,
+  focal_sharpness: 0.38,
+  focal_drift: 0.22,
+  background_reactivity: 0.24,
 };
 
 export interface VisualStateRange {
@@ -48,5 +53,9 @@ export const VISUAL_STATE_PARAM_RANGES: Record<
   scale: { min: 0, max: 1 },
   blur: { min: 0, max: 1 },
   vignette: { min: 0, max: 1 },
+  focal_intensity: { min: 0, max: 1 },
+  focal_size: { min: 0, max: 1 },
+  focal_sharpness: { min: 0, max: 1 },
+  focal_drift: { min: 0, max: 1 },
+  background_reactivity: { min: 0, max: 1 },
 };
-

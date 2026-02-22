@@ -1,4 +1,4 @@
-export const VISUAL_STATE_VERSION = 1 as const;
+export const VISUAL_STATE_VERSION = 2 as const;
 
 export interface VisualState {
   _version: number;
@@ -24,6 +24,13 @@ export interface VisualState {
   scale: number; // 0..1
   blur: number; // 0..1
   vignette: number; // 0..1
+
+  // Focal composition (v2 additive)
+  focal_intensity: number; // 0..1
+  focal_size: number; // 0..1
+  focal_sharpness: number; // 0..1
+  focal_drift: number; // 0..1
+  background_reactivity: number; // 0..1
 }
 
 export type VisualStateParams = Omit<VisualState, "_version" | "_timestamp">;
@@ -42,4 +49,3 @@ export interface VisualStateDelta {
   lerp_ms?: number;
   source?: VisualStateWriterSource;
 }
-

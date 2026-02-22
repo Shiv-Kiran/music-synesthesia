@@ -104,6 +104,31 @@ export function normalizeVisualStateParams(
     scale: normalizeParamValue("scale", source.scale, defaults.scale),
     blur: normalizeParamValue("blur", source.blur, defaults.blur),
     vignette: normalizeParamValue("vignette", source.vignette, defaults.vignette),
+    focal_intensity: normalizeParamValue(
+      "focal_intensity",
+      source.focal_intensity,
+      defaults.focal_intensity,
+    ),
+    focal_size: normalizeParamValue(
+      "focal_size",
+      source.focal_size,
+      defaults.focal_size,
+    ),
+    focal_sharpness: normalizeParamValue(
+      "focal_sharpness",
+      source.focal_sharpness,
+      defaults.focal_sharpness,
+    ),
+    focal_drift: normalizeParamValue(
+      "focal_drift",
+      source.focal_drift,
+      defaults.focal_drift,
+    ),
+    background_reactivity: normalizeParamValue(
+      "background_reactivity",
+      source.background_reactivity,
+      defaults.background_reactivity,
+    ),
   };
 }
 
@@ -160,4 +185,3 @@ export function getDeltaLerpMs(delta?: VisualStateDelta): number {
     ? (delta?.lerp_ms as number)
     : DEFAULT_VISUAL_LERP_MS;
 }
-
