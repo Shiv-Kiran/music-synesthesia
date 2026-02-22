@@ -88,11 +88,11 @@ void main() {
   float boomDist = length(boomVec);
   vec2 boomDir = boomDist > 0.0001 ? boomVec / boomDist : vec2(0.0, 1.0);
 
-  float ringRadius = 0.045 + uBoomAge * (0.4 + uWaveSpeed * 0.16);
+  float ringRadius = 0.04 + uBoomAge * (0.28 + uWaveSpeed * 0.1);
   float ringWidth = mix(0.014, 0.042, clamp(uBoomRing, 0.0, 1.0));
   float ringWarpNoise = noise(
     boomVec * (3.0 + uTurbulence * 2.4) +
-    vec2(uBoomAge * 1.7 + uTime * 0.08, -uTime * 0.12)
+    vec2(uBoomAge * 1.15 + uTime * 0.045, -uTime * 0.07)
   );
   float ringWarp = (ringWarpNoise - 0.5) * (0.018 + uBoomRing * 0.026 + uTurbulence * 0.018);
   float rippleDist = boomDist + ringWarp;
@@ -151,9 +151,9 @@ void main() {
   float blurGlow = smoothstep(1.25, 0.0, length(uv)) * uBlur * 0.25;
   color += blurGlow;
 
-  float slowBreath = sin(uTime * (0.9 + uWaveSpeed * 0.12) + n1 * 0.7) * 0.5 + 0.5;
+  float slowBreath = sin(uTime * (0.65 + uWaveSpeed * 0.08) + n1 * 0.7) * 0.5 + 0.5;
   vec2 presenceUv = boomVec;
-  float presenceTime = uTime * (0.18 + uWaveSpeed * 0.1);
+  float presenceTime = uTime * (0.11 + uWaveSpeed * 0.055);
   float presenceNoiseA = noise(
     presenceUv * (2.2 + uTurbulence * 2.8) + vec2(presenceTime * 1.2, -presenceTime * 0.9)
   );
@@ -182,11 +182,11 @@ void main() {
     presenceNoiseA * 6.28318 +
     presenceNoiseB * 2.4 +
     boomDist * (8.0 + uTurbulence * 6.0) -
-    presenceTime * (2.0 + uWaveSpeed * 0.4)
+    presenceTime * (1.35 + uWaveSpeed * 0.26)
   ) * 0.5 + 0.5;
   float interiorRipple = sin(
     boomDist * (14.0 + uTurbulence * 10.0) -
-    presenceTime * (3.2 + uWaveSpeed * 0.65) +
+    presenceTime * (2.05 + uWaveSpeed * 0.4) +
     presenceNoiseC * 4.0
   ) * 0.5 + 0.5;
   float tendrilDetail = presencePeriphery *
@@ -198,17 +198,30 @@ void main() {
   float centerIndent = thumpCore * (uBoomEnvelope * 0.09 + recoilSettle * 0.035);
 
   float ringAccent = ringBand * (0.008 + 0.115 * uBoomRing) * (0.65 + 0.35 * uPulseStrength);
-  float ringHue = fract(mix(hueA, hueB, 0.42 + pulse * 0.08));
+  float ringHue = fract(mix(hueA, hueB, 0.58 + pulse * 0.05));
   vec3 ringColor = hsl2rgb(vec3(
     ringHue,
     clamp(uSaturation * 0.85 + sparkle * 0.05, 0.0, 1.0),
     clamp(0.36 + uBrightness * 0.22, 0.0, 1.0)
   ));
-  float presenceHue = fract(mix(hueA, hueB, 0.3 + interiorFlow * 0.45) + (interiorRipple - 0.5) * 0.03);
+  float presenceHue = fract(mix(hueA, hueB, 0.18 + interiorFlow * 0.26) + (interiorRipple - 0.5) * 0.02);
   vec3 presenceColor = hsl2rgb(vec3(
     presenceHue,
     clamp(uSaturation * 0.8 + presencePeriphery * 0.08 + uTurbulence * 0.05, 0.0, 1.0),
     clamp(0.3 + uBrightness * 0.18 + interiorFlow * 0.1, 0.0, 1.0)
+  ));
+  float rippleTrailWave = sin(
+    rippleDist * (9.5 + uTurbulence * 4.0) -
+    presenceTime * (1.2 + uWaveSpeed * 0.25) +
+    presenceNoiseC * 3.3
+  ) * 0.5 + 0.5;
+  float rippleTrailMask = smoothstep(1.75, 0.06, boomDist);
+  float rippleTrail = rippleTrailMask * (0.008 + uBoomRing * 0.024) * rippleTrailWave;
+  float plumeHue = fract(mix(hueA, hueB, 0.42 + rippleTrailWave * 0.2) + (slowBreath - 0.5) * 0.01);
+  vec3 plumeColor = hsl2rgb(vec3(
+    plumeHue,
+    clamp(uSaturation * 0.7 + 0.08, 0.0, 1.0),
+    clamp(0.28 + uBrightness * 0.14 + uBoomEnvelope * 0.05, 0.0, 1.0)
   ));
   float presenceLift =
     presenceAura * (0.017 + slowBreath * 0.007) +
@@ -220,6 +233,7 @@ void main() {
   // Keep the impact punch contrast- and motion-driven instead of washing out the whole field.
   color *= (1.0 - centerIndent);
   color += presenceColor * presenceLift;
+  color += plumeColor * rippleTrail;
   color += ringColor * ringAccent * (0.4 + 0.2 * uBoomFlash);
   color += ringColor * thumpCore * (0.012 + uBoomEnvelope * 0.024 - recoilSettle * 0.004);
   color += vec3(1.0) * ringAccent * uBoomFlash * 0.012;
@@ -377,19 +391,19 @@ export function createQualiaEngine(
         currentState.turbulence * 0.12 +
         Math.min(currentState.wave_speed / 2, 1) * 0.06,
     );
-    const smoothing = Math.min(1, dt * 14);
+    const smoothing = Math.min(1, dt * 8);
     impactSignalSmoothed += (impactSignal - impactSignalSmoothed) * smoothing;
     const rise = impactSignalSmoothed - previousImpactSignal;
     previousImpactSignal = impactSignalSmoothed;
 
-    const impactCooldownMs = 70;
+    const impactCooldownMs = 105;
     if (
       timeMs - lastImpactTriggerMs >= impactCooldownMs &&
-      impactSignalSmoothed > 0.11 &&
-      rise > 0.004
+      impactSignalSmoothed > 0.12 &&
+      rise > 0.0055
     ) {
       const triggerStrength = clamp01(
-        (impactSignalSmoothed - 0.11) * 2.3 + (rise - 0.004) * 36,
+        (impactSignalSmoothed - 0.12) * 2.0 + (rise - 0.0055) * 24,
       );
       impactEnvelope = Math.max(impactEnvelope, 0.18 + triggerStrength * 0.88);
       impactRing = Math.max(impactRing, 0.18 + triggerStrength * 0.76);
@@ -401,10 +415,10 @@ export function createQualiaEngine(
       impactAge = Math.min(10, impactAge + dt);
     }
 
-    impactEnvelope *= Math.exp(-dt * (4.9 + currentState.wave_speed * 0.5));
-    impactRing *= Math.exp(-dt * 4.6);
-    impactFlash *= Math.exp(-dt * 9.2);
-    impactRecoil *= Math.exp(-dt * 2.5);
+    impactEnvelope *= Math.exp(-dt * (3.4 + currentState.wave_speed * 0.3));
+    impactRing *= Math.exp(-dt * 3.0);
+    impactFlash *= Math.exp(-dt * 6.8);
+    impactRecoil *= Math.exp(-dt * 1.8);
 
     uniforms.uBoomEnvelope.value = clamp01(impactEnvelope);
     uniforms.uBoomRing.value = clamp01(impactRing);
