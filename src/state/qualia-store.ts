@@ -10,6 +10,10 @@ import {
   expSmoothingFactor,
   interpolateVisualState,
 } from "@/engine/interpolate";
+import {
+  DEFAULT_VISUALIZER_PRESET,
+  type VisualizerPresetId,
+} from "@/engine/visualizer-presets";
 
 function nowMs(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -22,6 +26,7 @@ function nowMs(): number {
 export interface QualiaStoreState {
   visualState: VisualState;
   targetVisualState: VisualState;
+  visualizerPreset: VisualizerPresetId;
   audioFeatures: AudioFeatures;
   audioGateState: AudioGateState | null;
   lastTickMs: number | null;
@@ -31,6 +36,7 @@ export interface QualiaStoreState {
   setTargetVisualState: (state: Partial<VisualState>) => void;
   setAudioFeatures: (features: AudioFeatures) => void;
   setAudioGateState: (gateState: AudioGateState | null) => void;
+  setVisualizerPreset: (preset: VisualizerPresetId) => void;
   applyDelta: (delta: VisualStateDelta) => void;
   setMoodPole: (value: number) => void;
   tickLerp: (timeMs?: number) => void;
@@ -46,6 +52,7 @@ export const useQualiaStore = create<QualiaStoreState>()(
   subscribeWithSelector((set, get) => ({
     visualState: initialState,
     targetVisualState: initialState,
+    visualizerPreset: DEFAULT_VISUALIZER_PRESET,
     audioFeatures: { ...EMPTY_AUDIO_FEATURES },
     audioGateState: null,
     lastTickMs: null,
@@ -108,6 +115,10 @@ export const useQualiaStore = create<QualiaStoreState>()(
       set({
         audioGateState: gateState ? { ...gateState } : null,
       });
+    },
+
+    setVisualizerPreset: (preset) => {
+      set({ visualizerPreset: preset });
     },
 
     applyDelta: (delta) => {

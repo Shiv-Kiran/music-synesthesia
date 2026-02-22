@@ -45,6 +45,7 @@ import { MicPermissionScreen } from "@/ui/MicPermissionScreen";
 import { PromptOverlay } from "@/ui/PromptOverlay";
 import { MicTestScreen } from "@/ui/MicTestScreen";
 import { SessionCanvas } from "@/ui/SessionCanvas";
+import { VisualizerPresetToggle } from "@/ui/VisualizerPresetToggle";
 
 type MicFlowPhase =
   | "permission"
@@ -933,6 +934,12 @@ export function MicSessionFlow() {
         <SessionCanvas className="h-full w-full" />
       </div>
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_18%,rgba(255,255,255,0.08),transparent_55%),radial-gradient(circle_at_80%_75%,rgba(100,115,255,0.12),transparent_58%)]" />
+
+      {devBypassEnabled ? (
+        <div className="absolute top-3 left-3 z-20">
+          <VisualizerPresetToggle />
+        </div>
+      ) : null}
 
       <div className="relative z-10 flex h-full items-center justify-center px-4 py-8">
         {phase === "permission" || phase === "requesting" ? (

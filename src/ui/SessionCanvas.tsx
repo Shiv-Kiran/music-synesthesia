@@ -21,11 +21,18 @@ export function SessionCanvas({ className }: SessionCanvasProps) {
 
     const engine = createQualiaEngine(canvas, { transitionSmoothing: false });
     engine.applyVisualState(useQualiaStore.getState().visualState);
+    engine.setVisualizerPreset(useQualiaStore.getState().visualizerPreset);
 
-    const unsubscribe = useQualiaStore.subscribe(
+    const unsubscribeVisualState = useQualiaStore.subscribe(
       qualiaSelectors.visualState,
       (visualState) => {
         engine.applyVisualState(visualState);
+      },
+    );
+    const unsubscribePreset = useQualiaStore.subscribe(
+      qualiaSelectors.visualizerPreset,
+      (preset) => {
+        engine.setVisualizerPreset(preset);
       },
     );
 
@@ -54,11 +61,11 @@ export function SessionCanvas({ className }: SessionCanvasProps) {
     return () => {
       window.cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
-      unsubscribe();
+      unsubscribeVisualState();
+      unsubscribePreset();
       engine.dispose();
     };
   }, []);
 
   return <canvas ref={canvasRef} className={className} />;
 }
-

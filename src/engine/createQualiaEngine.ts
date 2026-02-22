@@ -7,9 +7,11 @@ import {
   expSmoothingFactor,
   interpolateVisualState,
 } from "@/engine/interpolate";
+import type { VisualizerPresetId } from "@/engine/visualizer-presets";
 
 export interface QualiaEngine {
   applyVisualState: (state: VisualState) => void;
+  setVisualizerPreset: (preset: VisualizerPresetId) => void;
   resize: (width?: number, height?: number) => void;
   dispose: () => void;
 }
@@ -346,6 +348,7 @@ export function createQualiaEngine(
   let disposed = false;
   let frameId = 0;
   let lastTimeMs = 0;
+  let visualizerPreset: VisualizerPresetId = "organic_presence";
   let currentState = normalizeVisualState(DEFAULT_VISUAL_STATE, performance.now());
   let targetState = currentState;
   let impactEnvelope = 0;
@@ -438,12 +441,18 @@ export function createQualiaEngine(
     targetState = normalizeVisualState(state, performance.now());
   };
 
+  const setVisualizerPreset = (preset: VisualizerPresetId) => {
+    visualizerPreset = preset;
+    void visualizerPreset;
+  };
+
   resize();
   copyStateToUniforms(uniforms, currentState);
   frameId = window.requestAnimationFrame(renderLoop);
 
   return {
     applyVisualState,
+    setVisualizerPreset,
     resize,
     dispose: () => {
       disposed = true;
