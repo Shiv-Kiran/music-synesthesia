@@ -269,13 +269,13 @@ export function MicSessionFlow() {
       const clamped = Math.min(Math.max(intensity, 0), 3);
       applyDelta({
         set: {
-          pulse_strength: Math.min(0.24 + clamped * 0.34, 1),
-          turbulence: Math.min(0.2 + clamped * 0.14, 1),
-          brightness: Math.min(0.22 + clamped * 0.045, 0.42),
-          hue_chaos: Math.min(0.08 + clamped * 0.045, 0.28),
-          particle_density: Math.min(0.25 + clamped * 0.12, 1),
-          wave_speed: Math.min(0.34 + clamped * 0.18, 2),
-          blur: Math.max(0.04, 0.1 - clamped * 0.012),
+          pulse_strength: Math.min(0.26 + clamped * 0.33, 1),
+          turbulence: Math.min(0.18 + clamped * 0.15, 1),
+          brightness: Math.min(0.22 + clamped * 0.03, 0.36),
+          hue_chaos: Math.min(0.07 + clamped * 0.03, 0.22),
+          particle_density: Math.min(0.24 + clamped * 0.1, 1),
+          wave_speed: Math.min(0.32 + clamped * 0.14, 2),
+          blur: Math.max(0.05, 0.095 - clamped * 0.01),
         },
         lerp_ms: 90,
         source: "audio",
@@ -285,13 +285,13 @@ export function MicSessionFlow() {
 
     applyDelta({
       set: {
-        pulse_strength: 0.22,
-        turbulence: 0.2,
-        brightness: 0.26,
-        hue_chaos: 0.12,
-        particle_density: 0.3,
-        wave_speed: 0.35,
-        blur: 0.08,
+        pulse_strength: 0.2,
+        turbulence: 0.18,
+        brightness: 0.25,
+        hue_chaos: 0.1,
+        particle_density: 0.28,
+        wave_speed: 0.32,
+        blur: 0.085,
       },
       lerp_ms: 220,
       source: "audio",
@@ -314,8 +314,8 @@ export function MicSessionFlow() {
     const intensityBias = Math.min(Math.max(intensity, 0), 3);
     const transient = clamp01(
       features.bass_energy * 0.42 +
-        features.high_energy * 0.18 +
-        features.zero_crossing_rate * 0.9 +
+        features.high_energy * 0.12 +
+        features.zero_crossing_rate * 0.65 +
         Math.max(0, features.rms - 0.02) * 8,
     );
     const impact = clamp01(
@@ -325,23 +325,23 @@ export function MicSessionFlow() {
         intensityBias * 0.06,
     );
     const textureDrive = clamp01(
-      features.mid_energy * 0.46 + features.high_energy * 0.22 + transient * 0.2,
+      features.mid_energy * 0.56 + features.high_energy * 0.12 + transient * 0.16,
     );
-    const brightnessLift = clamp01(features.rms * 0.9 + features.spectral_centroid * 0.08);
+    const brightnessLift = clamp01(features.rms * 0.7 + features.spectral_centroid * 0.05);
 
     applyDelta({
       set: {
-        pulse_strength: clamp01(0.16 + impact * 0.84),
-        turbulence: clamp01(0.12 + textureDrive * 0.44 + transient * 0.22),
-        brightness: clamp01(0.2 + brightnessLift * 0.15 + impact * 0.08),
-        hue_chaos: clamp01(0.06 + features.high_energy * 0.12 + transient * 0.08),
+        pulse_strength: clamp01(0.18 + impact * 0.8),
+        turbulence: clamp01(0.1 + textureDrive * 0.42 + transient * 0.12),
+        brightness: clamp01(0.2 + brightnessLift * 0.1 + impact * 0.05),
+        hue_chaos: clamp01(0.05 + features.high_energy * 0.08 + transient * 0.05),
         particle_density: clamp01(
-          0.2 + features.mid_energy * 0.22 + features.high_energy * 0.12 + impact * 0.1,
+          0.18 + features.mid_energy * 0.2 + features.high_energy * 0.08 + transient * 0.06,
         ),
         wave_speed: clampWaveSpeed(
-          0.18 + features.bass_energy * 0.62 + features.mid_energy * 0.34 + transient * 0.18,
+          0.18 + features.bass_energy * 0.52 + features.mid_energy * 0.26 + transient * 0.12,
         ),
-        blur: clamp01(0.045 + (1 - features.spectral_centroid) * 0.065 - impact * 0.025),
+        blur: clamp01(0.05 + (1 - features.spectral_centroid) * 0.05 - impact * 0.015),
       },
       lerp_ms: 80,
       source: "audio",
