@@ -8,6 +8,10 @@ import {
   createAudioGateStateFromCalibration,
 } from "@/audio/calibrate";
 import {
+  createSyntheticAudioSource,
+  type SyntheticAudioSource,
+} from "@/audio/dev-synthetic";
+import {
   createEnergyGateMachine,
   stepEnergyGate,
   type EnergyGateMachine,
@@ -45,6 +49,8 @@ type MicFlowPhase =
   | "calibrating"
   | "mic-test"
   | "ready";
+
+type SessionInputMode = "mic" | "synthetic";
 
 interface MicPreviewStats {
   rms: number;
@@ -119,6 +125,7 @@ export function MicSessionFlow() {
   const [previewStats, setPreviewStats] = useState<MicPreviewStats>(INITIAL_PREVIEW_STATS);
   const [featureStats, setFeatureStats] = useState<MicFeatureStats>(INITIAL_FEATURE_STATS);
   const [autoAdvanceInMs, setAutoAdvanceInMs] = useState<number | null>(null);
+  const [inputMode, setInputMode] = useState<SessionInputMode | null>(null);
   const [promptMachineState, setPromptMachineState] = useState<PromptMachineState>(() =>
     createPromptMachineState(0),
   );
@@ -126,6 +133,8 @@ export function MicSessionFlow() {
   const [lastPromptResponse, setLastPromptResponse] = useState<PromptResponseDebug | null>(null);
 
   const micControllerRef = useRef<MicInputController | null>(null);
+  const syntheticAudioSourceRef = useRef<SyntheticAudioSource | null>(null);
+  const inputModeRef = useRef<SessionInputMode | null>(null);
   const featureBuffersRef = useRef<AudioFeatureBuffers | null>(null);
   const gateStateRef = useRef<AudioGateState | null>(null);
   const gateMachineRef = useRef<EnergyGateMachine | null>(null);
@@ -145,6 +154,7 @@ export function MicSessionFlow() {
   const promptZoneHeldRef = useRef(false);
 
   const supported = useMemo(() => isMicSupported(), []);
+  const devBypassEnabled = process.env.NODE_ENV !== "production";
 
   function stopLoop() {
     if (rafRef.current !== null) {
@@ -160,7 +170,10 @@ export function MicSessionFlow() {
       stopLoop();
       const controller = micControllerRef.current;
       micControllerRef.current = null;
+      syntheticAudioSourceRef.current = null;
+      inputModeRef.current = null;
       featureBuffersRef.current = null;
+      setInputMode(null);
       setAudioFeatures({ ...EMPTY_AUDIO_FEATURES });
       setAudioGateState(null);
       void controller?.dispose();
@@ -280,17 +293,31 @@ export function MicSessionFlow() {
     });
   };
 
-  const processAudioFrame = (timeMs: number) => {
-    const controller = micControllerRef.current;
-    const buffers = featureBuffersRef.current;
+  const processAudioFrame = (timeMs: number, syntheticElapsedMs?: number) => {
     const gateState = gateStateRef.current;
     const gateMachine = gateMachineRef.current;
+    const currentInputMode = inputModeRef.current;
 
-    if (!controller || !buffers || !gateState || !gateMachine) {
+    if (!gateState || !gateMachine || !currentInputMode) {
       return null;
     }
 
-    const features = sampleAudioFeatures(controller.analyser, buffers);
+    let features: AudioFeatures;
+    if (currentInputMode === "synthetic") {
+      const source = syntheticAudioSourceRef.current;
+      if (!source || typeof syntheticElapsedMs !== "number") {
+        return null;
+      }
+      features = source.sampleFeatures(Math.max(0, syntheticElapsedMs));
+    } else {
+      const controller = micControllerRef.current;
+      const buffers = featureBuffersRef.current;
+      if (!controller || !buffers) {
+        return null;
+      }
+      features = sampleAudioFeatures(controller.analyser, buffers);
+    }
+
     const decision = stepEnergyGate(gateMachine, gateState, features.rms, timeMs);
 
     gateMachineRef.current = decision.machine;
@@ -319,6 +346,8 @@ export function MicSessionFlow() {
     stopLoop();
     const controller = micControllerRef.current;
     micControllerRef.current = null;
+    syntheticAudioSourceRef.current = null;
+    inputModeRef.current = null;
     featureBuffersRef.current = null;
     gateStateRef.current = null;
     gateMachineRef.current = null;
@@ -331,6 +360,7 @@ export function MicSessionFlow() {
     setPreviewStats(INITIAL_PREVIEW_STATS);
     setFeatureStats(INITIAL_FEATURE_STATS);
     setAutoAdvanceInMs(null);
+    setInputMode(null);
     sessionStartedAtRef.current = 0;
     resetPromptMachineRuntime(0);
     setAudioFeatures({ ...EMPTY_AUDIO_FEATURES });
@@ -344,7 +374,11 @@ export function MicSessionFlow() {
     stopLoop();
     const controller = micControllerRef.current;
     const gateState = gateStateRef.current;
-    if (!controller || !gateState) {
+    if (!gateState) {
+      return;
+    }
+
+    if (inputModeRef.current === "mic" && !controller) {
       return;
     }
 
@@ -372,7 +406,10 @@ export function MicSessionFlow() {
         micTestStartedAtRef.current = timeMs;
       }
 
-      const frame = processAudioFrame(timeMs);
+      const frame = processAudioFrame(
+        timeMs,
+        Math.max(0, timeMs - micTestStartedAtRef.current),
+      );
       if (!frame) {
         return;
       }
@@ -429,7 +466,10 @@ export function MicSessionFlow() {
         return;
       }
 
-      const frame = processAudioFrame(timeMs);
+      const frame = processAudioFrame(
+        timeMs,
+        sessionStartedAtRef.current > 0 ? Math.max(0, timeMs - sessionStartedAtRef.current) : 0,
+      );
       if (!frame) {
         return;
       }
@@ -498,14 +538,22 @@ export function MicSessionFlow() {
         calibrationStartedAtRef.current = timeMs;
       }
 
-      const controller = micControllerRef.current;
-      if (!controller) {
-        return;
-      }
-
       const elapsed = timeMs - calibrationStartedAtRef.current;
       const progress = computeCalibrationProgress(elapsed);
-      const rms = controller.sampleRms();
+      let rms = 0;
+      if (inputModeRef.current === "synthetic") {
+        const source = syntheticAudioSourceRef.current;
+        if (!source) {
+          return;
+        }
+        rms = source.sampleCalibrationRms(elapsed);
+      } else {
+        const liveController = micControllerRef.current;
+        if (!liveController) {
+          return;
+        }
+        rms = liveController.sampleRms();
+      }
       calibrationSamplesRef.current.push(rms);
       setCalibrationProgress(progress);
 
@@ -546,6 +594,9 @@ export function MicSessionFlow() {
       }
 
       micControllerRef.current = controller;
+      syntheticAudioSourceRef.current = null;
+      inputModeRef.current = "mic";
+      setInputMode("mic");
       featureBuffersRef.current = createAudioFeatureBuffers(controller.analyser.fftSize);
       startCalibrationLoop();
     } catch (error) {
@@ -560,6 +611,24 @@ export function MicSessionFlow() {
 
   const handleContinueFromMicTest = () => {
     enterReady();
+  };
+
+  const handleUseDevBypass = () => {
+    if (!devBypassEnabled || phase === "requesting") {
+      return;
+    }
+
+    stopLoop();
+    const controller = micControllerRef.current;
+    micControllerRef.current = null;
+    featureBuffersRef.current = null;
+    void controller?.dispose();
+
+    setPermissionError(null);
+    syntheticAudioSourceRef.current = createSyntheticAudioSource();
+    inputModeRef.current = "synthetic";
+    setInputMode("synthetic");
+    startCalibrationLoop();
   };
 
   const handlePromptChipSelect = (chipId: string, chipLabel: string) => {
@@ -608,6 +677,8 @@ export function MicSessionFlow() {
             requesting={phase === "requesting"}
             errorMessage={permissionError}
             onAllow={handleAllow}
+            showDevBypass={devBypassEnabled}
+            onUseDevBypass={handleUseDevBypass}
           />
         ) : null}
 
@@ -639,6 +710,11 @@ export function MicSessionFlow() {
             <p className="mt-3 text-xs text-white/50">
               Mood bar and session recording are next. Chip taps update visuals instantly and dismiss the prompt.
             </p>
+            {inputMode === "synthetic" ? (
+              <p className="mt-2 text-xs text-cyan-100/75">
+                Dev demo input is active (deterministic synthetic audio).
+              </p>
+            ) : null}
             <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4 text-left">
               <div className="mb-3 flex items-center justify-between text-xs text-white/55">
                 <span className="uppercase tracking-[0.18em]">live audio features</span>
