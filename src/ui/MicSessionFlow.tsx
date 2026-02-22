@@ -34,6 +34,7 @@ import {
   type MicInputController,
 } from "@/audio/mic";
 import type { AudioFeatures, AudioGateState } from "@/contracts/audio";
+import type { PromptPhase } from "@/contracts/prompt";
 import { PROMPT_LIBRARY } from "@/content/prompts";
 import {
   createPromptMachineState,
@@ -45,6 +46,17 @@ import type {
   PromptMachineEvent,
   PromptMachineState,
 } from "@/prompt/prompt-types";
+import {
+  clearSessionDraft,
+  createSessionDraftPersistenceController,
+  loadSessionDraft,
+  saveLastSession,
+} from "@/session/local-storage";
+import {
+  createSessionRecorder,
+  type RecorderPromptMeta,
+  type SessionRecorder,
+} from "@/session/recorder";
 import { useQualiaStore } from "@/state/qualia-store";
 import { MicCalibrationScreen } from "@/ui/MicCalibrationScreen";
 import { MoodBar } from "@/ui/MoodBar";
@@ -94,6 +106,11 @@ interface PromptResponseDebug {
   responseLatencyMs: number;
   promptText: string;
   atMs: number;
+}
+
+interface LastKnownPromptMeta {
+  phase: PromptPhase | null;
+  text: string;
 }
 
 function getNowMs(): number {
@@ -200,6 +217,19 @@ export function MicSessionFlow() {
   const previousAudioFeaturesForPromptRef = useRef<AudioFeatures | null>(null);
   const lastPromptUiSyncAtRef = useRef<number>(0);
   const promptZoneHeldRef = useRef(false);
+  const sessionRecorderRef = useRef<SessionRecorder>(createSessionRecorder());
+  const sessionPersistenceRef = useRef<ReturnType<
+    typeof createSessionDraftPersistenceController
+  > | null>(null);
+  const lastKnownPromptMetaRef = useRef<LastKnownPromptMeta>({
+    phase: null,
+    text: "",
+  });
+  const moodSnapshotDebounceTimerRef = useRef<number | null>(null);
+  const lastMoodSnapshotAtRef = useRef<number>(0);
+  const lastObservedMoodPoleRef = useRef<number | null>(null);
+  const periodicSnapshotIntervalRef = useRef<number | null>(null);
+  const moodPoleUnsubscribeRef = useRef<(() => void) | null>(null);
   const settleVisualPreviewRef = useRef<(active: boolean, intensity?: number) => void>(
     () => {},
   );
@@ -243,14 +273,180 @@ export function MicSessionFlow() {
     cleanup?.();
   }
 
+  function clearMoodSnapshotDebounce() {
+    if (moodSnapshotDebounceTimerRef.current !== null) {
+      window.clearTimeout(moodSnapshotDebounceTimerRef.current);
+      moodSnapshotDebounceTimerRef.current = null;
+    }
+  }
+
+  function stopPeriodicSessionSnapshots() {
+    if (periodicSnapshotIntervalRef.current !== null) {
+      window.clearInterval(periodicSnapshotIntervalRef.current);
+      periodicSnapshotIntervalRef.current = null;
+    }
+  }
+
+  function stopMoodSnapshotTracking() {
+    clearMoodSnapshotDebounce();
+    const unsubscribe = moodPoleUnsubscribeRef.current;
+    moodPoleUnsubscribeRef.current = null;
+    unsubscribe?.();
+    lastObservedMoodPoleRef.current = null;
+    lastMoodSnapshotAtRef.current = 0;
+  }
+
+  function stopSessionDraftPersistence() {
+    sessionPersistenceRef.current?.stop();
+    sessionPersistenceRef.current = null;
+  }
+
+  function buildDefaultRecorderPromptMeta(): RecorderPromptMeta | undefined {
+    const lastPromptMeta = lastKnownPromptMetaRef.current;
+    if (lastPromptMeta.phase === null && lastPromptMeta.text === "") {
+      return undefined;
+    }
+
+    return {
+      ...(lastPromptMeta.phase ? { prompt_phase: lastPromptMeta.phase } : {}),
+      prompt_text: lastPromptMeta.text,
+    };
+  }
+
+  function recordSessionSnapshot(
+    trigger: "time" | "user_initiated",
+    options?: {
+      prompt?: RecorderPromptMeta;
+      nowEpochMs?: number;
+    },
+  ) {
+    const recorder = sessionRecorderRef.current;
+    if (!recorder.isActive()) {
+      return null;
+    }
+
+    const storeState = useQualiaStore.getState();
+    return recorder.recordSnapshot({
+      trigger,
+      visual_state: storeState.targetVisualState,
+      audio_features: storeState.audioFeatures,
+      prompt: options?.prompt ?? buildDefaultRecorderPromptMeta(),
+      lastKnownPromptPhase: lastKnownPromptMetaRef.current.phase,
+      nowEpochMs: options?.nowEpochMs,
+    });
+  }
+
+  function startSessionDraftPersistence() {
+    stopSessionDraftPersistence();
+    const controller = createSessionDraftPersistenceController({
+      getDraft: () => sessionRecorderRef.current.getDraft(),
+    });
+    controller.start();
+    sessionPersistenceRef.current = controller;
+  }
+
+  function startPeriodicSessionSnapshots() {
+    stopPeriodicSessionSnapshots();
+    periodicSnapshotIntervalRef.current = window.setInterval(() => {
+      recordSessionSnapshot("time", { nowEpochMs: Date.now() });
+    }, 45_000);
+  }
+
+  function startMoodSnapshotTracking() {
+    stopMoodSnapshotTracking();
+    lastObservedMoodPoleRef.current = useQualiaStore.getState().targetVisualState.mood_pole;
+
+    moodPoleUnsubscribeRef.current = useQualiaStore.subscribe(
+      (state) => state.targetVisualState.mood_pole,
+      (moodPole) => {
+        lastObservedMoodPoleRef.current = moodPole;
+        clearMoodSnapshotDebounce();
+        moodSnapshotDebounceTimerRef.current = window.setTimeout(() => {
+          moodSnapshotDebounceTimerRef.current = null;
+          const nowEpochTimeMs = Date.now();
+          if (!sessionRecorderRef.current.isActive()) {
+            return;
+          }
+          if (nowEpochTimeMs - lastMoodSnapshotAtRef.current < 1_200) {
+            return;
+          }
+
+          lastMoodSnapshotAtRef.current = nowEpochTimeMs;
+          recordSessionSnapshot("user_initiated", { nowEpochMs: nowEpochTimeMs });
+        }, 300);
+      },
+    );
+  }
+
+  function startOrResumeSessionRecorder() {
+    stopPeriodicSessionSnapshots();
+    stopMoodSnapshotTracking();
+    stopSessionDraftPersistence();
+
+    const recorder = sessionRecorderRef.current;
+    recorder.clear();
+
+    const persistedDraft = loadSessionDraft();
+    if (persistedDraft && persistedDraft.ended_at === "") {
+      recorder.resumeDraft(persistedDraft, { nowEpochMs: Date.now() });
+    } else {
+      const storeState = useQualiaStore.getState();
+      recorder.startNew({
+        initial_preset: storeState.targetVisualState,
+        nowEpochMs: Date.now(),
+      });
+    }
+
+    startSessionDraftPersistence();
+    startPeriodicSessionSnapshots();
+    startMoodSnapshotTracking();
+  }
+
+  function finalizeSessionRecorderIfActive() {
+    stopPeriodicSessionSnapshots();
+    stopMoodSnapshotTracking();
+
+    const recorder = sessionRecorderRef.current;
+    if (recorder.isActive()) {
+      const nowEpochTimeMs = Date.now();
+      recordSessionSnapshot("user_initiated", { nowEpochMs: nowEpochTimeMs });
+      const finalized = recorder.end({ nowEpochMs: nowEpochTimeMs });
+      if (finalized) {
+        saveLastSession(finalized);
+        clearSessionDraft();
+      }
+    }
+
+    stopSessionDraftPersistence();
+    recorder.clear();
+    lastKnownPromptMetaRef.current = { phase: null, text: "" };
+  }
+
   useEffect(() => {
     resetVisualState();
     const demoAudio = devDemoAudioRef.current;
+    const sessionRecorder = sessionRecorderRef.current;
     return () => {
       disposedRef.current = true;
       stopLoop();
       stopDevDemoPreviewLoop();
       clearTabCaptureTrackListeners();
+      if (periodicSnapshotIntervalRef.current !== null) {
+        window.clearInterval(periodicSnapshotIntervalRef.current);
+        periodicSnapshotIntervalRef.current = null;
+      }
+      if (moodSnapshotDebounceTimerRef.current !== null) {
+        window.clearTimeout(moodSnapshotDebounceTimerRef.current);
+        moodSnapshotDebounceTimerRef.current = null;
+      }
+      const unsubscribeMoodPole = moodPoleUnsubscribeRef.current;
+      moodPoleUnsubscribeRef.current = null;
+      unsubscribeMoodPole?.();
+      lastObservedMoodPoleRef.current = null;
+      lastMoodSnapshotAtRef.current = 0;
+      sessionPersistenceRef.current?.stop();
+      sessionPersistenceRef.current = null;
+      sessionRecorder.clear();
       if (demoAudio) {
         demoAudio.pause();
         demoAudio.src = "";
@@ -292,6 +488,10 @@ export function MicSessionFlow() {
     lastPromptUiSyncAtRef.current = 0;
     previousAudioFeaturesForPromptRef.current = null;
     promptZoneHeldRef.current = false;
+    lastKnownPromptMetaRef.current = {
+      phase: null,
+      text: "",
+    };
     setPromptMachineState(nextPromptState);
     setPromptZoneHeld(false);
     setLastPromptResponse(null);
@@ -310,10 +510,30 @@ export function MicSessionFlow() {
 
   const handlePromptEvents = (events: PromptMachineEvent[], nowMs: number) => {
     for (const event of events) {
+      if (event.type === "prompt_shown") {
+        lastKnownPromptMetaRef.current = {
+          phase: event.prompt.phase,
+          text: event.prompt.text,
+        };
+        continue;
+      }
+
+      if (event.type === "prompt_dismissed") {
+        lastKnownPromptMetaRef.current = {
+          phase: event.prompt.phase,
+          text: "",
+        };
+        continue;
+      }
+
       if (event.type !== "prompt_responded") {
         continue;
       }
 
+      lastKnownPromptMetaRef.current = {
+        phase: event.prompt.phase,
+        text: event.prompt.text,
+      };
       setLastPromptResponse({
         chipLabel: event.chip_label,
         responseLatencyMs: event.response_latency_ms,
@@ -595,13 +815,15 @@ export function MicSessionFlow() {
     const readyStartedAt = getNowMs();
     sessionStartedAtRef.current = readyStartedAt;
     resetPromptMachineRuntime(readyStartedAt);
+    startOrResumeSessionRecorder();
     startReadyLoop();
   };
 
   const resetToPermission = (nextPermissionError: string | null = null) => {
     stopLoop();
-    stopDevDemoPlayback();
     clearTabCaptureTrackListeners();
+    finalizeSessionRecorderIfActive();
+    stopDevDemoPlayback();
     const controller = micControllerRef.current;
     micControllerRef.current = null;
     syntheticAudioSourceRef.current = null;
@@ -1032,6 +1254,7 @@ export function MicSessionFlow() {
 
   const handlePromptChipSelect = (chipId: string, chipLabel: string) => {
     const nowMs = getNowMs();
+    const nowEpochTimeMs = Date.now();
     const currentPromptState = promptMachineRef.current;
     const activePrompt = currentPromptState.active_prompt;
     if (!activePrompt) {
@@ -1050,6 +1273,22 @@ export function MicSessionFlow() {
       chip_label: chipLabel,
     });
     promptMachineRef.current = responseResult.state;
+    const respondedEvent = responseResult.events.find(
+      (event): event is Extract<PromptMachineEvent, { type: "prompt_responded" }> =>
+        event.type === "prompt_responded",
+    );
+    if (respondedEvent) {
+      recordSessionSnapshot("user_initiated", {
+        nowEpochMs: nowEpochTimeMs,
+        prompt: {
+          prompt_phase: respondedEvent.prompt.phase,
+          prompt_text: respondedEvent.prompt.text,
+          user_response: respondedEvent.chip_label,
+          response_latency_ms: respondedEvent.response_latency_ms,
+        },
+      });
+      sessionPersistenceRef.current?.flushImportant();
+    }
     handlePromptEvents(responseResult.events, nowMs);
     syncPromptUiState(responseResult.state, nowMs, true);
 

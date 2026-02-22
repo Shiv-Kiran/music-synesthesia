@@ -5,8 +5,8 @@ export function canBuildLocalSessionSummary(session: SessionFingerprint): boolea
 }
 
 export function buildLocalSessionSummary(
-  _session: SessionFingerprint,
+  session: SessionFingerprint,
 ): SessionFingerprint["vibe_summary"] | undefined {
+  void session;
   return undefined;
 }
-
