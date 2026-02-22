@@ -14,6 +14,10 @@ export interface QualiaEngine {
   dispose: () => void;
 }
 
+export interface QualiaEngineOptions {
+  transitionSmoothing?: boolean;
+}
+
 const vertexShader = `
 varying vec2 vUv;
 
@@ -181,7 +185,11 @@ function copyStateToUniforms(uniforms: Uniforms, state: VisualState): void {
   uniforms.uVignette.value = state.vignette;
 }
 
-export function createQualiaEngine(canvas: HTMLCanvasElement): QualiaEngine {
+export function createQualiaEngine(
+  canvas: HTMLCanvasElement,
+  options: QualiaEngineOptions = {},
+): QualiaEngine {
+  const transitionSmoothing = options.transitionSmoothing ?? true;
   const renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: true,
@@ -233,7 +241,7 @@ export function createQualiaEngine(canvas: HTMLCanvasElement): QualiaEngine {
     const dt = Math.min((timeMs - lastTimeMs) / 1000, 0.1);
     lastTimeMs = timeMs;
 
-    const alpha = expSmoothingFactor(dt, 5.5);
+    const alpha = transitionSmoothing ? expSmoothingFactor(dt, 5.5) : 1;
     currentState = interpolateVisualState(currentState, targetState, alpha);
     currentState._timestamp = timeMs;
 
