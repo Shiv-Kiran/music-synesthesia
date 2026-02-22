@@ -99,11 +99,11 @@ void main() {
   float ringBand = exp(-pow((rippleDist - ringRadius) / max(ringWidth, 0.0001), 2.0));
   float echoRadius = max(0.0, ringRadius - (0.075 + uBoomAge * 0.08));
   float echoBand = exp(-pow((rippleDist - echoRadius) / max(ringWidth * 1.6, 0.0001), 2.0));
-  ringBand += echoBand * (0.12 + uBoomRing * 0.18);
+  ringBand += echoBand * (0.1 + uBoomRing * 0.16);
   float centerCompression = exp(-pow(boomDist / 0.24, 2.0)) * uBoomEnvelope;
   float localPressure = smoothstep(0.95, 0.0, boomDist);
   float pressureWarp =
-    (-centerCompression * 0.015 + ringBand * uBoomWarp * 0.009) * localPressure;
+    (-centerCompression * 0.015 + ringBand * uBoomWarp * 0.01) * localPressure;
   uv += boomDir * pressureWarp;
 
   float angle = radians(uFlowDirection);
@@ -177,7 +177,7 @@ void main() {
     recoilSettle * 0.055;
   float presenceCore = exp(-pow(max(presenceDist, 0.0) / max(presenceRadius, 0.0001), 2.15));
   float presenceAura = exp(-pow(max(presenceDist, 0.0) / max(presenceRadius * 2.25, 0.0001), 1.45));
-  float presencePeriphery = smoothstep(0.0, 1.0, presenceAura - presenceCore * 0.65);
+  float presencePeriphery = smoothstep(0.0, 1.0, presenceAura - presenceCore * 0.7);
   float interiorFlow = sin(
     presenceNoiseA * 6.28318 +
     presenceNoiseB * 2.4 +
@@ -191,11 +191,11 @@ void main() {
   ) * 0.5 + 0.5;
   float tendrilDetail = presencePeriphery *
     smoothstep(0.52, 0.95, presenceNoiseB) *
-    (0.015 + (uTurbulence + uParticleDensity) * 0.04 + uBoomRing * 0.035);
+    (0.017 + (uTurbulence + uParticleDensity) * 0.043 + uBoomRing * 0.03);
 
   float thumpRadius = 0.075 + uBoomEnvelope * 0.12;
   float thumpCore = exp(-pow(boomDist / max(thumpRadius, 0.0001), 2.35));
-  float centerIndent = thumpCore * (uBoomEnvelope * 0.085 + recoilSettle * 0.03);
+  float centerIndent = thumpCore * (uBoomEnvelope * 0.09 + recoilSettle * 0.035);
 
   float ringAccent = ringBand * (0.008 + 0.115 * uBoomRing) * (0.65 + 0.35 * uPulseStrength);
   float ringHue = fract(mix(hueA, hueB, 0.42 + pulse * 0.08));
@@ -211,18 +211,18 @@ void main() {
     clamp(0.3 + uBrightness * 0.18 + interiorFlow * 0.1, 0.0, 1.0)
   ));
   float presenceLift =
-    presenceAura * (0.02 + slowBreath * 0.01) +
-    presenceCore * (0.028 + uBoomEnvelope * 0.04 - recoilSettle * 0.01) +
-    presenceCore * interiorFlow * 0.026 +
-    presencePeriphery * interiorRipple * 0.016 +
+    presenceAura * (0.017 + slowBreath * 0.007) +
+    presenceCore * (0.03 + uBoomEnvelope * 0.043 - recoilSettle * 0.011) +
+    presenceCore * interiorFlow * 0.03 +
+    presencePeriphery * interiorRipple * 0.022 +
     tendrilDetail;
 
   // Keep the impact punch contrast- and motion-driven instead of washing out the whole field.
   color *= (1.0 - centerIndent);
   color += presenceColor * presenceLift;
   color += ringColor * ringAccent * (0.4 + 0.2 * uBoomFlash);
-  color += ringColor * thumpCore * (0.014 + uBoomEnvelope * 0.028 - recoilSettle * 0.005);
-  color += vec3(1.0) * ringAccent * uBoomFlash * 0.016;
+  color += ringColor * thumpCore * (0.012 + uBoomEnvelope * 0.024 - recoilSettle * 0.004);
+  color += vec3(1.0) * ringAccent * uBoomFlash * 0.012;
 
   float vignette = smoothstep(1.45, 0.25 + (1.0 - uVignette) * 0.6, length(uv));
   color *= mix(1.0, vignette, clamp(uVignette, 0.0, 1.0));
