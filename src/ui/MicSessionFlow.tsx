@@ -25,7 +25,14 @@ import {
   sampleAudioFeatures,
   type AudioFeatureBuffers,
 } from "@/audio/features";
-import { createMicInputController, isMicSupported, type MicInputController } from "@/audio/mic";
+import {
+  TabAudioCaptureError,
+  createMicInputController,
+  createTabAudioInputController,
+  isMicSupported,
+  isTabAudioCaptureSupported,
+  type MicInputController,
+} from "@/audio/mic";
 import type { AudioFeatures, AudioGateState } from "@/contracts/audio";
 import { PROMPT_LIBRARY } from "@/content/prompts";
 import {
@@ -54,7 +61,7 @@ type MicFlowPhase =
   | "mic-test"
   | "ready";
 
-type SessionInputMode = "mic" | "synthetic" | "dev-demo-audio";
+type SessionInputMode = "mic" | "synthetic" | "dev-demo-audio" | "tab-audio";
 
 interface MicPreviewStats {
   rms: number;
@@ -78,6 +85,9 @@ const INITIAL_FEATURE_STATS: MicFeatureStats = {
   ...EMPTY_AUDIO_FEATURES,
   gateActive: false,
 };
+
+const TAB_AUDIO_PSEUDO_NOISE_FLOOR_RMS = 0.0065;
+const TAB_AUDIO_PSEUDO_THRESHOLD_RMS = 0.0095;
 
 interface PromptResponseDebug {
   chipLabel: string;
@@ -111,6 +121,37 @@ function getMicErrorMessage(error: unknown): string {
   }
 
   return domError.message || "Could not access the microphone. Please try again.";
+}
+
+function getTabAudioCaptureErrorMessage(error: unknown): string {
+  if (error instanceof TabAudioCaptureError) {
+    if (error.code === "unsupported") {
+      return "Tab audio capture is available on Chrome/Edge desktop for now.";
+    }
+    if (error.code === "no-audio-track") {
+      return "No tab audio was shared. Choose a browser tab and enable tab audio in the share picker.";
+    }
+    if (error.code === "not-browser-tab") {
+      return "Please choose a browser tab (window/screen capture is not supported for this demo).";
+    }
+  }
+
+  if (!error || typeof error !== "object") {
+    return "Could not start tab audio capture. Try again.";
+  }
+
+  const domError = error as DOMException;
+  if (domError.name === "NotAllowedError") {
+    return "Tab sharing was canceled or blocked. Choose a browser tab and allow audio sharing.";
+  }
+  if (domError.name === "NotReadableError") {
+    return "Tab audio capture is busy or unavailable. Close other captures and try again.";
+  }
+  if (domError.name === "AbortError") {
+    return "Tab sharing was interrupted. Try sharing the tab again.";
+  }
+
+  return domError.message || "Could not start tab audio capture. Try again.";
 }
 
 const PROMPT_DEFINITION_BY_ID = Object.fromEntries(
@@ -168,10 +209,16 @@ export function MicSessionFlow() {
   const devDemoAudioSourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
   const devDemoAnalyserRef = useRef<AnalyserNode | null>(null);
   const devDemoAnalyserBuffersRef = useRef<AudioFeatureBuffers | null>(null);
+  const tabCaptureTrackListenersCleanupRef = useRef<(() => void) | null>(null);
 
   const supported = useSyncExternalStore<boolean | null>(
     () => () => {},
     () => isMicSupported(),
+    () => null,
+  );
+  const tabAudioCaptureSupported = useSyncExternalStore<boolean | null>(
+    () => () => {},
+    () => isTabAudioCaptureSupported(),
     () => null,
   );
   const devBypassEnabled = process.env.NODE_ENV !== "production";
@@ -190,6 +237,12 @@ export function MicSessionFlow() {
     }
   }
 
+  function clearTabCaptureTrackListeners() {
+    const cleanup = tabCaptureTrackListenersCleanupRef.current;
+    tabCaptureTrackListenersCleanupRef.current = null;
+    cleanup?.();
+  }
+
   useEffect(() => {
     resetVisualState();
     const demoAudio = devDemoAudioRef.current;
@@ -197,6 +250,7 @@ export function MicSessionFlow() {
       disposedRef.current = true;
       stopLoop();
       stopDevDemoPreviewLoop();
+      clearTabCaptureTrackListeners();
       if (demoAudio) {
         demoAudio.pause();
         demoAudio.src = "";
@@ -544,9 +598,10 @@ export function MicSessionFlow() {
     startReadyLoop();
   };
 
-  const resetToPermission = () => {
+  const resetToPermission = (nextPermissionError: string | null = null) => {
     stopLoop();
     stopDevDemoPlayback();
+    clearTabCaptureTrackListeners();
     const controller = micControllerRef.current;
     micControllerRef.current = null;
     syntheticAudioSourceRef.current = null;
@@ -558,7 +613,7 @@ export function MicSessionFlow() {
     autoAdvanceDeadlineRef.current = null;
     heardSignalAtRef.current = null;
     lastStoreAudioWriteAtRef.current = 0;
-    setPermissionError(null);
+    setPermissionError(nextPermissionError);
     setCalibrationProgress(0);
     setPreviewStats(INITIAL_PREVIEW_STATS);
     setFeatureStats(INITIAL_FEATURE_STATS);
@@ -573,6 +628,36 @@ export function MicSessionFlow() {
     void controller?.dispose();
   };
 
+  const attachTabCaptureTrackListeners = (controller: MicInputController) => {
+    clearTabCaptureTrackListeners();
+
+    let handled = false;
+    const onEnded = () => {
+      if (handled || disposedRef.current || inputModeRef.current !== "tab-audio") {
+        return;
+      }
+      handled = true;
+      clearTabCaptureTrackListeners();
+      resetToPermission("Tab sharing ended. Share a tab again to continue.");
+    };
+
+    const tracks = controller.stream.getTracks();
+    for (const track of tracks) {
+      track.addEventListener("ended", onEnded);
+    }
+
+    tabCaptureTrackListenersCleanupRef.current = () => {
+      handled = true;
+      for (const track of tracks) {
+        try {
+          track.removeEventListener("ended", onEnded);
+        } catch {
+          // no-op
+        }
+      }
+    };
+  };
+
   const startMicTestLoop = () => {
     stopLoop();
     const controller = micControllerRef.current;
@@ -582,6 +667,10 @@ export function MicSessionFlow() {
     }
 
     if (inputModeRef.current === "mic" && !controller) {
+      return;
+    }
+
+    if (inputModeRef.current === "tab-audio" && !controller) {
       return;
     }
 
@@ -794,6 +883,7 @@ export function MicSessionFlow() {
     try {
       const existing = micControllerRef.current;
       micControllerRef.current = null;
+      clearTabCaptureTrackListeners();
       if (existing) {
         await existing.dispose();
       }
@@ -816,6 +906,49 @@ export function MicSessionFlow() {
     }
   };
 
+  const handleUseTabAudioCapture = async () => {
+    if (tabAudioCaptureSupported !== true || phase === "requesting") {
+      return;
+    }
+
+    stopDevDemoPlayback();
+    stopLoop();
+    setPermissionError(null);
+    setPhase("requesting");
+
+    try {
+      const existing = micControllerRef.current;
+      micControllerRef.current = null;
+      clearTabCaptureTrackListeners();
+      if (existing) {
+        await existing.dispose();
+      }
+
+      const controller = await createTabAudioInputController();
+      if (disposedRef.current) {
+        await controller.dispose();
+        return;
+      }
+
+      micControllerRef.current = controller;
+      attachTabCaptureTrackListeners(controller);
+      syntheticAudioSourceRef.current = null;
+      inputModeRef.current = "tab-audio";
+      setInputMode("tab-audio");
+      featureBuffersRef.current = createAudioFeatureBuffers(controller.analyser.fftSize);
+      gateStateRef.current = {
+        noise_floor_rms: TAB_AUDIO_PSEUDO_NOISE_FLOOR_RMS,
+        energy_threshold_rms: TAB_AUDIO_PSEUDO_THRESHOLD_RMS,
+        gated_active: false,
+        calibrated_at: Date.now(),
+      };
+      startMicTestLoop();
+    } catch (error) {
+      setPermissionError(getTabAudioCaptureErrorMessage(error));
+      setPhase("permission");
+    }
+  };
+
   const handleSkipMicTest = () => {
     enterReady();
   };
@@ -832,6 +965,7 @@ export function MicSessionFlow() {
     stopLoop();
     const controller = micControllerRef.current;
     micControllerRef.current = null;
+    clearTabCaptureTrackListeners();
     featureBuffersRef.current = null;
     void controller?.dispose();
 
@@ -948,6 +1082,9 @@ export function MicSessionFlow() {
             requesting={phase === "requesting"}
             errorMessage={permissionError}
             onAllow={handleAllow}
+            showTabAudioCapture={tabAudioCaptureSupported === true}
+            tabAudioCaptureSupported={tabAudioCaptureSupported}
+            onUseTabAudioCapture={handleUseTabAudioCapture}
             showDevBypass={devBypassEnabled}
             onUseDevBypass={handleUseDevBypass}
             activeDevDemoClipId={activeDevDemoClipId}
@@ -968,6 +1105,17 @@ export function MicSessionFlow() {
             thresholdRms={previewStats.thresholdRms}
             gateActive={previewStats.gateActive}
             autoAdvanceInMs={autoAdvanceInMs}
+            title={
+              inputMode === "tab-audio"
+                ? "play something in the shared tab"
+                : "say something, or play a few seconds"
+            }
+            subtitle={
+              inputMode === "tab-audio"
+                ? "just making sure we can hear the tab audio"
+                : "just making sure we can hear you"
+            }
+            signalLabel={inputMode === "tab-audio" ? "tab signal" : "mic signal"}
             onContinue={handleContinueFromMicTest}
             onSkip={handleSkipMicTest}
           />
@@ -977,10 +1125,12 @@ export function MicSessionFlow() {
           <div className="mx-auto w-full max-w-xl rounded-3xl border border-white/10 bg-black/30 p-6 text-center backdrop-blur">
             <p className="text-xs tracking-[0.22em] text-white/45 uppercase">Qualia</p>
             <h2 className="mt-4 text-2xl font-semibold text-white sm:text-3xl">
-              mic is ready
+              {inputMode === "tab-audio" ? "tab audio is ready" : "mic is ready"}
             </h2>
             <p className="mt-2 text-sm text-white/70 sm:text-base">
-              prompts now drift in with deterministic chip responses while the mic drives the field.
+              {inputMode === "tab-audio"
+                ? "prompts now drift in with deterministic chip responses while the shared tab drives the field."
+                : "prompts now drift in with deterministic chip responses while the mic drives the field."}
             </p>
             <p className="mt-3 text-xs text-white/50">
               Mood bar and session recording are next. Chip taps update visuals instantly and dismiss the prompt.
@@ -993,6 +1143,11 @@ export function MicSessionFlow() {
             {inputMode === "dev-demo-audio" ? (
               <p className="mt-2 text-xs text-cyan-100/75">
                 Dev demo clip input is active (live analysed audio from the playing clip).
+              </p>
+            ) : null}
+            {inputMode === "tab-audio" ? (
+              <p className="mt-2 text-xs text-emerald-100/75">
+                Browser tab audio input is active (beta).
               </p>
             ) : null}
             <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4 text-left">
@@ -1029,10 +1184,10 @@ export function MicSessionFlow() {
             ) : null}
             <button
               type="button"
-              onClick={resetToPermission}
+              onClick={() => resetToPermission()}
               className="mt-5 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm text-white transition hover:border-white/35 hover:bg-white/16"
             >
-              test mic again
+              {inputMode === "tab-audio" ? "choose another input" : "test mic again"}
             </button>
           </div>
         ) : null}

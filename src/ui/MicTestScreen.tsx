@@ -6,6 +6,9 @@ export interface MicTestScreenProps {
   thresholdRms: number;
   gateActive: boolean;
   autoAdvanceInMs?: number | null;
+  title?: string;
+  subtitle?: string;
+  signalLabel?: string;
   onContinue: () => void;
   onSkip: () => void;
 }
@@ -20,6 +23,9 @@ export function MicTestScreen({
   thresholdRms,
   gateActive,
   autoAdvanceInMs,
+  title = "say something, or play a few seconds",
+  subtitle = "just making sure we can hear you",
+  signalLabel = "mic signal",
   onContinue,
   onSkip,
 }: MicTestScreenProps) {
@@ -28,16 +34,16 @@ export function MicTestScreen({
       <div>
         <p className="text-xs tracking-[0.22em] text-white/45 uppercase">Qualia</p>
         <h2 className="mt-4 text-2xl leading-tight font-semibold text-white sm:text-3xl">
-          say something, or play a few seconds
+          {title}
         </h2>
         <p className="mt-2 text-sm text-white/65">
-          just making sure we can hear you
+          {subtitle}
         </p>
       </div>
 
       <div className="w-full max-w-md rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur">
         <div className="mb-3 flex items-center justify-between text-xs text-white/60">
-          <span>mic signal</span>
+          <span>{signalLabel}</span>
           <span className={gateActive ? "text-emerald-200" : "text-white/55"}>
             {gateActive ? "listening" : "idle"}
           </span>
@@ -95,4 +101,3 @@ export function MicTestScreen({
     </div>
   );
 }
-
