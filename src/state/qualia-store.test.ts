@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { DEFAULT_VISUAL_STATE } from "@/contracts/defaults";
+import { DEFAULT_VISUALIZER_PRESET } from "@/engine/visualizer-presets";
 import { useQualiaStore } from "@/state/qualia-store";
 
 describe("useQualiaStore", () => {
@@ -78,5 +79,20 @@ describe("useQualiaStore", () => {
     expect(state.audioFeatures.bass_energy).toBeCloseTo(0.6);
     expect(state.audioGateState?.gated_active).toBe(true);
     expect(state.audioGateState?.calibrated_at).toBe(123);
+  });
+
+  it("switches visualizer presets without resetting visual state", () => {
+    const store = useQualiaStore.getState();
+    const beforeBrightness = store.targetVisualState.brightness;
+
+    store.setVisualizerPreset("monochrome_concentric_emergence");
+
+    let state = useQualiaStore.getState();
+    expect(state.visualizerPreset).toBe("monochrome_concentric_emergence");
+    expect(state.targetVisualState.brightness).toBe(beforeBrightness);
+
+    state.setVisualizerPreset(DEFAULT_VISUALIZER_PRESET);
+    state = useQualiaStore.getState();
+    expect(state.visualizerPreset).toBe(DEFAULT_VISUALIZER_PRESET);
   });
 });
