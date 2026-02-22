@@ -1,5 +1,7 @@
 "use client";
 
+import { DEV_DEMO_AUDIO_CLIPS } from "@/audio/dev-demo-clips";
+
 export interface MicPermissionScreenProps {
   supported: boolean;
   requesting: boolean;
@@ -7,15 +9,11 @@ export interface MicPermissionScreenProps {
   onAllow: () => void;
   showDevBypass?: boolean;
   onUseDevBypass?: () => void;
+  activeDevDemoClipId?: string | null;
+  devDemoPlaying?: boolean;
+  onToggleDevDemoClip?: (clipId: string) => void;
+  devDemoPlaybackError?: string | null;
 }
-
-const DEV_DEMO_AUDIO_CLIPS = [
-  { href: "/dev-audio/qualia-demo-loop-24s.wav", label: "full loop (24s)" },
-  { href: "/dev-audio/qualia-demo-build-0-10s.wav", label: "build (0-10s)" },
-  { href: "/dev-audio/qualia-demo-peak-10-14s.wav", label: "peak (10-14s)" },
-  { href: "/dev-audio/qualia-demo-drop-14-18s.wav", label: "drop (14-18s)" },
-  { href: "/dev-audio/qualia-demo-accents-20-24s.wav", label: "accents (20-24s)" },
-] as const;
 
 export function MicPermissionScreen({
   supported,
@@ -24,6 +22,10 @@ export function MicPermissionScreen({
   onAllow,
   showDevBypass = false,
   onUseDevBypass,
+  activeDevDemoClipId = null,
+  devDemoPlaying = false,
+  onToggleDevDemoClip,
+  devDemoPlaybackError = null,
 }: MicPermissionScreenProps) {
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-6 text-center">
@@ -82,17 +84,35 @@ export function MicPermissionScreen({
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {DEV_DEMO_AUDIO_CLIPS.map((clip) => (
-              <a
-                key={clip.href}
-                href={clip.href}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-full border border-white/12 bg-white/5 px-3 py-1 text-[11px] text-white/75 transition hover:border-white/24 hover:bg-white/10"
+              <button
+                key={clip.id}
+                type="button"
+                onClick={() => onToggleDevDemoClip?.(clip.id)}
+                className="rounded-full border px-3 py-1 text-[11px] transition"
+                style={{
+                  borderColor:
+                    activeDevDemoClipId === clip.id
+                      ? "rgba(103, 232, 249, 0.45)"
+                      : "rgba(255,255,255,0.12)",
+                  background:
+                    activeDevDemoClipId === clip.id
+                      ? "rgba(34, 211, 238, 0.12)"
+                      : "rgba(255,255,255,0.05)",
+                  color:
+                    activeDevDemoClipId === clip.id
+                      ? "rgba(207, 250, 254, 0.98)"
+                      : "rgba(255,255,255,0.75)",
+                }}
               >
+                {activeDevDemoClipId === clip.id && devDemoPlaying ? "pause " : "play "}
                 {clip.label}
-              </a>
+              </button>
             ))}
           </div>
+
+          {devDemoPlaybackError ? (
+            <p className="mt-2 text-[11px] text-red-200/85">{devDemoPlaybackError}</p>
+          ) : null}
         </div>
       ) : null}
     </div>
