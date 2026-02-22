@@ -33,6 +33,7 @@ import type {
 } from "@/prompt/prompt-types";
 import { useQualiaStore } from "@/state/qualia-store";
 import { MicCalibrationScreen } from "@/ui/MicCalibrationScreen";
+import { MoodBar } from "@/ui/MoodBar";
 import { MicPermissionScreen } from "@/ui/MicPermissionScreen";
 import { PromptOverlay } from "@/ui/PromptOverlay";
 import { MicTestScreen } from "@/ui/MicTestScreen";
@@ -690,6 +691,8 @@ export function MicSessionFlow() {
           onPromptZoneHoldChange={handlePromptZoneHoldChange}
         />
       ) : null}
+
+      {phase === "ready" ? <MoodBar /> : null}
     </div>
   );
 }
