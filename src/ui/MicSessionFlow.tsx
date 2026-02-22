@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import {
   CALIBRATION_DURATION_MS,
@@ -168,7 +168,11 @@ export function MicSessionFlow() {
   const devDemoAnalyserRef = useRef<AnalyserNode | null>(null);
   const devDemoAnalyserBuffersRef = useRef<AudioFeatureBuffers | null>(null);
 
-  const supported = useMemo(() => isMicSupported(), []);
+  const supported = useSyncExternalStore<boolean | null>(
+    () => () => {},
+    () => isMicSupported(),
+    () => null,
+  );
   const devBypassEnabled = process.env.NODE_ENV !== "production";
 
   function stopLoop() {

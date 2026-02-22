@@ -3,7 +3,7 @@
 import { DEV_DEMO_AUDIO_CLIPS } from "@/audio/dev-demo-clips";
 
 export interface MicPermissionScreenProps {
-  supported: boolean;
+  supported: boolean | null;
   requesting: boolean;
   errorMessage?: string | null;
   onAllow: () => void;
@@ -40,7 +40,7 @@ export function MicPermissionScreen({
         <p className="mt-3 text-xs text-white/55">no recording. ever.</p>
       </div>
 
-      {!supported ? (
+      {supported === false ? (
         <div className="rounded-2xl border border-red-300/20 bg-red-400/10 px-4 py-3 text-sm text-red-100">
           Microphone capture is not supported in this browser.
         </div>
@@ -56,7 +56,7 @@ export function MicPermissionScreen({
         <button
           type="button"
           onClick={onAllow}
-          disabled={!supported || requesting}
+          disabled={supported !== true || requesting}
           className="rounded-full border border-white/25 bg-white/10 px-5 py-2 text-sm text-white transition hover:border-white/40 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {requesting ? "opening mic..." : "allow listening"}
