@@ -5,6 +5,8 @@ export interface MicPermissionScreenProps {
   requesting: boolean;
   errorMessage?: string | null;
   onAllow: () => void;
+  showDevBypass?: boolean;
+  onUseDevBypass?: () => void;
 }
 
 export function MicPermissionScreen({
@@ -12,6 +14,8 @@ export function MicPermissionScreen({
   requesting,
   errorMessage,
   onAllow,
+  showDevBypass = false,
+  onUseDevBypass,
 }: MicPermissionScreenProps) {
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-6 text-center">
@@ -38,15 +42,33 @@ export function MicPermissionScreen({
         </div>
       ) : null}
 
-      <button
-        type="button"
-        onClick={onAllow}
-        disabled={!supported || requesting}
-        className="rounded-full border border-white/25 bg-white/10 px-5 py-2 text-sm text-white transition hover:border-white/40 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {requesting ? "opening mic..." : "allow listening"}
-      </button>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={onAllow}
+          disabled={!supported || requesting}
+          className="rounded-full border border-white/25 bg-white/10 px-5 py-2 text-sm text-white transition hover:border-white/40 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {requesting ? "opening mic..." : "allow listening"}
+        </button>
+
+        {showDevBypass && onUseDevBypass ? (
+          <button
+            type="button"
+            onClick={onUseDevBypass}
+            disabled={requesting}
+            className="rounded-full border border-cyan-200/25 bg-cyan-300/8 px-5 py-2 text-sm text-cyan-100 transition hover:border-cyan-200/45 hover:bg-cyan-300/12 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            use demo input (dev)
+          </button>
+        ) : null}
+      </div>
+
+      {showDevBypass ? (
+        <p className="text-xs text-white/40">
+          Dev mode: deterministic synthetic audio lets you test prompts and visuals without a mic.
+        </p>
+      ) : null}
     </div>
   );
 }
-
