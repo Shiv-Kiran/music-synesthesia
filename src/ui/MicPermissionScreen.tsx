@@ -9,6 +9,9 @@ export interface MicPermissionScreenProps {
   onAllow: () => void;
   showDevBypass?: boolean;
   onUseDevBypass?: () => void;
+  showTabAudioCapture?: boolean;
+  tabAudioCaptureSupported?: boolean | null;
+  onUseTabAudioCapture?: () => void;
   activeDevDemoClipId?: string | null;
   devDemoPlaying?: boolean;
   onToggleDevDemoClip?: (clipId: string) => void;
@@ -22,6 +25,9 @@ export function MicPermissionScreen({
   onAllow,
   showDevBypass = false,
   onUseDevBypass,
+  showTabAudioCapture = false,
+  tabAudioCaptureSupported = null,
+  onUseTabAudioCapture,
   activeDevDemoClipId = null,
   devDemoPlaying = false,
   onToggleDevDemoClip,
@@ -92,7 +98,24 @@ export function MicPermissionScreen({
             use demo input (dev)
           </button>
         ) : null}
+
+        {showTabAudioCapture && onUseTabAudioCapture ? (
+          <button
+            type="button"
+            onClick={onUseTabAudioCapture}
+            disabled={requesting || tabAudioCaptureSupported !== true}
+            className="rounded-full border border-emerald-200/25 bg-emerald-300/8 px-5 py-2 text-sm text-emerald-100 transition hover:border-emerald-200/45 hover:bg-emerald-300/12 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            use tab audio (beta)
+          </button>
+        ) : null}
       </div>
+
+      {showTabAudioCapture ? (
+        <p className="max-w-md text-xs text-white/48">
+          Choose a browser tab and enable tab audio in the share picker.
+        </p>
+      ) : null}
 
       {showDevBypass ? (
         <div className="max-w-lg rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-left">
