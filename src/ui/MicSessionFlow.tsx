@@ -53,7 +53,7 @@ type MicFlowPhase =
   | "mic-test"
   | "ready";
 
-type SessionInputMode = "mic" | "synthetic";
+type SessionInputMode = "mic" | "synthetic" | "dev-demo-audio";
 
 interface MicPreviewStats {
   rms: number;
@@ -486,6 +486,13 @@ export function MicSessionFlow() {
         return null;
       }
       features = source.sampleFeatures(Math.max(0, syntheticElapsedMs));
+    } else if (currentInputMode === "dev-demo-audio") {
+      const analyser = devDemoAnalyserRef.current;
+      const buffers = devDemoAnalyserBuffersRef.current;
+      if (!analyser || !buffers) {
+        return null;
+      }
+      features = sampleAudioFeatures(analyser, buffers);
     } else {
       const controller = micControllerRef.current;
       const buffers = featureBuffersRef.current;
@@ -512,7 +519,11 @@ export function MicSessionFlow() {
   };
 
   const enterReady = () => {
-    stopDevDemoPlayback();
+    if (inputModeRef.current !== "dev-demo-audio") {
+      stopDevDemoPlayback();
+    } else {
+      stopDevDemoPreviewLoop();
+    }
     setAutoAdvanceInMs(null);
     const readyStartedAt = getNowMs();
     sessionStartedAtRef.current = readyStartedAt;
@@ -726,6 +737,13 @@ export function MicSessionFlow() {
           return;
         }
         rms = source.sampleCalibrationRms(elapsed);
+      } else if (inputModeRef.current === "dev-demo-audio") {
+        const analyser = devDemoAnalyserRef.current;
+        const buffers = devDemoAnalyserBuffersRef.current;
+        if (!analyser || !buffers) {
+          return;
+        }
+        rms = sampleAudioFeatures(analyser, buffers).rms;
       } else {
         const liveController = micControllerRef.current;
         if (!liveController) {
@@ -799,13 +817,29 @@ export function MicSessionFlow() {
     }
 
     stopLoop();
-    stopDevDemoPlayback();
     const controller = micControllerRef.current;
     micControllerRef.current = null;
     featureBuffersRef.current = null;
     void controller?.dispose();
 
     setPermissionError(null);
+    const canUsePlayingDemoClip =
+      activeDevDemoClipId !== null &&
+      devDemoPlaying &&
+      devDemoAudioRef.current !== null &&
+      devDemoAnalyserRef.current !== null &&
+      devDemoAnalyserBuffersRef.current !== null;
+
+    if (canUsePlayingDemoClip) {
+      stopDevDemoPreviewLoop();
+      syntheticAudioSourceRef.current = null;
+      inputModeRef.current = "dev-demo-audio";
+      setInputMode("dev-demo-audio");
+      startCalibrationLoop();
+      return;
+    }
+
+    stopDevDemoPlayback();
     syntheticAudioSourceRef.current = createSyntheticAudioSource();
     inputModeRef.current = "synthetic";
     setInputMode("synthetic");
@@ -935,6 +969,11 @@ export function MicSessionFlow() {
             {inputMode === "synthetic" ? (
               <p className="mt-2 text-xs text-cyan-100/75">
                 Dev demo input is active (deterministic synthetic audio).
+              </p>
+            ) : null}
+            {inputMode === "dev-demo-audio" ? (
+              <p className="mt-2 text-xs text-cyan-100/75">
+                Dev demo clip input is active (live analysed audio from the playing clip).
               </p>
             ) : null}
             <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4 text-left">
