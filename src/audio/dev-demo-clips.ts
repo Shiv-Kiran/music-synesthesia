@@ -43,9 +43,9 @@ export const DEV_DEMO_AUDIO_CLIPS: DevDemoAudioClip[] = [
     duration_s: 16,
   },
   {
-    id: "peaceful-glass-16s",
-    href: "/dev-audio/qualia-demo-peaceful-glass-16s.wav",
-    label: "peaceful glass (16s)",
+    id: "stomp-drive-16s",
+    href: "/dev-audio/qualia-demo-stomp-drive-16s.wav",
+    label: "stomp drive (16s)",
     synthetic_start_s: 0,
     duration_s: 16,
   },
