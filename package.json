@@ -26,6 +26,7 @@
     "@types/node": "^20.19.33",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.183.1",
     "eslint": "^9.39.3",
     "eslint-config-next": "16.1.6",
     "jsdom": "^28.1.0",
