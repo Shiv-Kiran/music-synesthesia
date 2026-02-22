@@ -27,17 +27,37 @@ export function MicPermissionScreen({
   onToggleDevDemoClip,
   devDemoPlaybackError = null,
 }: MicPermissionScreenProps) {
+  const headingTextShadow = {
+    textShadow:
+      "0 1px 1px rgba(0,0,0,0.78), 0 2px 14px rgba(0,0,0,0.42), 0 0 24px rgba(0,0,0,0.25)",
+    WebkitTextStroke: "0.5px rgba(0,0,0,0.28)",
+  } as const;
+
+  const bodyTextShadow = {
+    textShadow: "0 1px 1px rgba(0,0,0,0.72), 0 0 10px rgba(0,0,0,0.28)",
+  } as const;
+
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-6 text-center">
-      <div>
-        <p className="text-xs tracking-[0.22em] text-white/45 uppercase">Qualia</p>
-        <h1 className="mt-4 text-2xl leading-tight font-semibold text-white sm:text-4xl">
+      <div className="rounded-2xl border border-white/8 bg-black/12 px-5 py-4 shadow-[0_10px_36px_rgba(0,0,0,0.24)] backdrop-blur-[2px]">
+        <p
+          className="text-xs tracking-[0.22em] text-white/55 uppercase"
+          style={bodyTextShadow}
+        >
+          Qualia
+        </p>
+        <h1
+          className="mt-4 text-2xl leading-tight font-semibold text-white sm:text-4xl"
+          style={headingTextShadow}
+        >
           we listen through your mic
         </h1>
-        <p className="mt-2 text-sm text-white/70 sm:text-base">
+        <p className="mt-2 text-sm text-white/75 sm:text-base" style={bodyTextShadow}>
           so we can feel the music with you
         </p>
-        <p className="mt-3 text-xs text-white/55">no recording. ever.</p>
+        <p className="mt-3 text-xs text-white/60" style={bodyTextShadow}>
+          no recording. ever.
+        </p>
       </div>
 
       {supported === false ? (
