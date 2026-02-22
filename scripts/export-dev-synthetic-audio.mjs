@@ -202,39 +202,88 @@ function sampleBrokenBeatWave(seconds, sampleIndex, seed = 27) {
   return softClip((low + mid + perc + pulseBed) * 0.82);
 }
 
-function sampleNeonArpWave(seconds, sampleIndex, seed = 37) {
-  const bpm = 118;
-  const kick = rhythmicPulse(seconds, bpm, 1, [0.75, 0, 0.45, 0], 10);
+function sampleKickGridWave(seconds, sampleIndex, seed = 53) {
+  const bpm = 126;
+  const kick = rhythmicPulse(
+    seconds,
+    bpm,
+    4,
+    [1, 0, 0, 0, 0.9, 0, 0.22, 0, 1, 0, 0.0, 0, 0.78, 0, 0.18, 0.12],
+    13.5,
+  );
+  const ghostKick = rhythmicPulse(seconds, bpm, 8, [0, 0, 0.12, 0, 0, 0, 0.08, 0], 22);
+  const snare = rhythmicPulse(seconds, bpm, 4, [0, 0, 0.78, 0, 0, 0, 0.72, 0], 18);
   const hat = rhythmicPulse(
     seconds,
     bpm,
     8,
-    [0.22, 0.08, 0.24, 0.06, 0.18, 0.1, 0.26, 0.08, 0.22, 0.08, 0.24, 0.06, 0.2, 0.1, 0.28, 0.08],
-    24,
+    [0.44, 0.08, 0.24, 0.12, 0.38, 0.06, 0.3, 0.1, 0.4, 0.08, 0.26, 0.1, 0.36, 0.08, 0.28, 0.1],
+    28,
   );
-  const arpPattern = [0, 4, 7, 11, 7, 4, 12, 11, 7, 4, 14, 11, 7, 4, 12, 9];
-  const arpStep = Math.floor(seconds * (bpm / 60) * 4) % arpPattern.length;
-  const arpFreq = 220 * Math.pow(2, arpPattern[arpStep] / 12);
-  const arpPulse = rhythmicPulse(
+
+  const pitchDrop = Math.exp(-fract(seconds * (bpm / 60) * 4) * 14);
+  const sub = sine(44, seconds);
+  const kickBody = sine(58 + pitchDrop * 26, seconds, 0.05);
+  const click = sine(1900 + 420 * pitchDrop, seconds) * (kick + ghostKick * 0.5);
+  const snareBody = sine(190 + 34 * Math.sin(seconds * 0.5), seconds, 0.4) * snare;
+  const noise = noise01(sampleIndex, seed) * 2 - 1;
+
+  const low = (sub * 0.9 + kickBody * 0.55) * (0.06 + kick * 1.1 + ghostKick * 0.35);
+  const mid = snareBody * (0.06 + snare * 0.25);
+  const perc = noise * (0.012 + hat * 0.075 + snare * 0.045) + click * 0.028;
+  const drive = 0.88 + 0.12 * Math.sin(seconds * 0.12 + 0.7);
+
+  return softClip((low + mid + perc) * drive * 0.9);
+}
+
+function sampleTransientSnapWave(seconds, sampleIndex, seed = 59) {
+  const bpm = 138;
+  const kick = rhythmicPulse(seconds, bpm, 4, [0.9, 0, 0.0, 0.18, 0.68, 0, 0.2, 0, 0.82, 0, 0, 0.14, 0.74, 0, 0.28, 0], 16);
+  const snare = rhythmicPulse(seconds, bpm, 4, [0, 0.0, 0.62, 0, 0, 0.2, 0.0, 0, 0.76, 0, 0.24, 0, 0, 0.26, 0.56, 0], 22);
+  const hat = rhythmicPulse(
     seconds,
     bpm,
-    4,
-    new Array(16).fill(0.85),
-    22,
+    16,
+    [0.42, 0.06, 0.24, 0.08, 0.34, 0.08, 0.18, 0.06, 0.4, 0.06, 0.22, 0.08, 0.32, 0.08, 0.2, 0.06],
+    34,
   );
+  const shaker = rhythmicPulse(seconds, bpm, 16, new Array(16).fill(0.16), 38);
 
-  const sweep = 0.5 + 0.5 * Math.sin(seconds * 0.16 + 2.0);
-  const sub = sine(52, seconds);
-  const pad = sine(130 + 18 * sweep, seconds, 0.35) + sine(195 + 22 * sweep, seconds, 1.25) * 0.55;
-  const arp = sine(arpFreq, seconds, 0.1) + sine(arpFreq * 2.01, seconds, 0.9) * 0.35;
-  const sparkleNoise = noise01(sampleIndex, seed) * 2 - 1;
+  const sub = sine(47, seconds);
+  const lowTone = sine(72 + 8 * Math.sin(seconds * 0.33), seconds, 0.15);
+  const snareTone = sine(230, seconds, 0.9) * snare;
+  const noise = noise01(sampleIndex, seed) * 2 - 1;
+  const hiss = noise01(sampleIndex + 91, seed + 13) * 2 - 1;
 
-  const low = (sub * 0.55 + sine(76 + sweep * 8, seconds) * 0.35) * (0.12 + kick * 0.65);
-  const mid = pad * (0.08 + sweep * 0.08);
-  const lead = arp * (0.05 + arpPulse * 0.22);
-  const highs = sparkleNoise * (0.01 + hat * 0.05 + arpPulse * 0.01);
+  const low = (sub * 0.8 + lowTone * 0.35) * (0.05 + kick * 0.95);
+  const sn = snareTone * (0.05 + snare * 0.24);
+  const highs = noise * (0.01 + hat * 0.085 + snare * 0.04) + hiss * (0.006 + shaker * 0.03);
+  const transientBias = 0.9 + 0.1 * (fract(seconds * (bpm / 60)) < 0.5 ? 1 : -1);
 
-  return softClip((low + mid + lead + highs) * 0.72);
+  return softClip((low + sn + highs) * transientBias * 0.86);
+}
+
+function sampleTomRushWave(seconds, sampleIndex, seed = 61) {
+  const bpm = 104;
+  const kick = rhythmicPulse(seconds, bpm, 2, [1, 0, 0.0, 0.42, 0.84, 0, 0.0, 0.3], 12);
+  const tomA = rhythmicPulse(seconds, bpm, 4, [0.0, 0.56, 0.0, 0.18, 0.0, 0.48, 0.0, 0.22, 0.0, 0.62, 0.0, 0.2, 0.0, 0.44, 0.0, 0.24], 16);
+  const tomB = rhythmicPulse(seconds, bpm, 4, [0.0, 0.0, 0.38, 0.0, 0.0, 0.0, 0.46, 0.0, 0.0, 0.0, 0.34, 0.0, 0.0, 0.0, 0.52, 0.0], 18);
+  const rim = rhythmicPulse(seconds, bpm, 8, [0.12, 0, 0.0, 0.06, 0.1, 0, 0.0, 0.08], 30);
+  const hat = rhythmicPulse(seconds, bpm, 8, [0.24, 0.06, 0.18, 0.08, 0.22, 0.06, 0.2, 0.08], 26);
+
+  const sub = sine(43, seconds);
+  const kickTone = sine(60 + 18 * Math.exp(-fract(seconds * (bpm / 60) * 2) * 9), seconds);
+  const tomToneA = sine(118, seconds, 0.2);
+  const tomToneB = sine(154, seconds, 1.0);
+  const rimTone = sine(980, seconds, 0.4);
+  const noise = noise01(sampleIndex, seed) * 2 - 1;
+
+  const low = (sub * 0.85 + kickTone * 0.45) * (0.06 + kick * 1.0);
+  const toms = tomToneA * tomA * 0.32 + tomToneB * tomB * 0.28;
+  const top = rimTone * rim * 0.03 + noise * (0.008 + hat * 0.05 + rim * 0.02);
+  const movement = 0.84 + 0.16 * Math.sin(seconds * 0.18 + 1.3);
+
+  return softClip((low + toms + top) * movement * 0.88);
 }
 
 function samplePeacefulDriftWave(seconds, sampleIndex, seed = 43) {
@@ -327,20 +376,20 @@ function renderClip({ fileName, startSeconds, durationSeconds, seed = 1, sampler
 
 const clips = [
   {
-    fileName: "qualia-demo-steady-pulse-16s.wav",
+    fileName: "qualia-demo-kick-grid-16s.wav",
     startSeconds: 0,
     durationSeconds: 16,
-    label: "Steady pulse loop",
-    seed: 11,
-    sampler: sampleSteadyPulseWave,
+    label: "Kick grid loop",
+    seed: 53,
+    sampler: sampleKickGridWave,
   },
   {
-    fileName: "qualia-demo-halftime-thump-16s.wav",
+    fileName: "qualia-demo-transient-snap-16s.wav",
     startSeconds: 0,
     durationSeconds: 16,
-    label: "Halftime thump loop",
-    seed: 19,
-    sampler: sampleHalftimeThumpWave,
+    label: "Transient snap loop",
+    seed: 59,
+    sampler: sampleTransientSnapWave,
   },
   {
     fileName: "qualia-demo-broken-beat-16s.wav",
@@ -351,12 +400,12 @@ const clips = [
     sampler: sampleBrokenBeatWave,
   },
   {
-    fileName: "qualia-demo-neon-arp-16s.wav",
+    fileName: "qualia-demo-tom-rush-16s.wav",
     startSeconds: 0,
     durationSeconds: 16,
-    label: "Neon arp loop",
-    seed: 37,
-    sampler: sampleNeonArpWave,
+    label: "Tom rush loop",
+    seed: 61,
+    sampler: sampleTomRushWave,
   },
   {
     fileName: "qualia-demo-peaceful-drift-16s.wav",

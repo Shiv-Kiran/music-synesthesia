@@ -8,16 +8,16 @@ export interface DevDemoAudioClip {
 
 export const DEV_DEMO_AUDIO_CLIPS: DevDemoAudioClip[] = [
   {
-    id: "steady-pulse-16s",
-    href: "/dev-audio/qualia-demo-steady-pulse-16s.wav",
-    label: "steady pulse (16s)",
+    id: "kick-grid-16s",
+    href: "/dev-audio/qualia-demo-kick-grid-16s.wav",
+    label: "kick grid (16s)",
     synthetic_start_s: 0,
     duration_s: 16,
   },
   {
-    id: "halftime-thump-16s",
-    href: "/dev-audio/qualia-demo-halftime-thump-16s.wav",
-    label: "halftime thump (16s)",
+    id: "transient-snap-16s",
+    href: "/dev-audio/qualia-demo-transient-snap-16s.wav",
+    label: "transient snap (16s)",
     synthetic_start_s: 0,
     duration_s: 16,
   },
@@ -29,9 +29,9 @@ export const DEV_DEMO_AUDIO_CLIPS: DevDemoAudioClip[] = [
     duration_s: 16,
   },
   {
-    id: "neon-arp-16s",
-    href: "/dev-audio/qualia-demo-neon-arp-16s.wav",
-    label: "neon arp (16s)",
+    id: "tom-rush-16s",
+    href: "/dev-audio/qualia-demo-tom-rush-16s.wav",
+    label: "tom rush (16s)",
     synthetic_start_s: 0,
     duration_s: 16,
   },
