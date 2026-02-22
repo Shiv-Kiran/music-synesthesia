@@ -46,6 +46,11 @@ uniform float uDepth;
 uniform float uScale;
 uniform float uBlur;
 uniform float uVignette;
+uniform float uBoomEnvelope;
+uniform float uBoomRing;
+uniform float uBoomAge;
+uniform float uBoomWarp;
+uniform float uBoomFlash;
 
 varying vec2 vUv;
 
@@ -77,6 +82,20 @@ void main() {
   float aspect = uResolution.x / max(uResolution.y, 1.0);
   uv.x *= aspect;
 
+  vec2 boomCenter = vec2(0.0, 0.08);
+  vec2 boomVec = uv - boomCenter;
+  float boomDist = length(boomVec);
+  vec2 boomDir = boomDist > 0.0001 ? boomVec / boomDist : vec2(0.0, 1.0);
+
+  float ringRadius = 0.045 + uBoomAge * (0.42 + uWaveSpeed * 0.18);
+  float ringWidth = mix(0.018, 0.055, clamp(uBoomRing, 0.0, 1.0));
+  float ringBand = exp(-pow((boomDist - ringRadius) / max(ringWidth, 0.0001), 2.0));
+  float centerCompression = exp(-pow(boomDist / 0.24, 2.0)) * uBoomEnvelope;
+  float localPressure = smoothstep(0.95, 0.0, boomDist);
+  float pressureWarp =
+    (-centerCompression * 0.012 + ringBand * uBoomWarp * 0.01) * localPressure;
+  uv += boomDir * pressureWarp;
+
   float angle = radians(uFlowDirection);
   mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
   uv = rot * uv;
@@ -98,6 +117,7 @@ void main() {
 
   float sparkle = step(1.0 - (0.02 + uParticleDensity * 0.08), hash(floor((uv + t * 0.02) * 70.0)));
   sparkle *= 0.35 + 0.65 * pulse;
+  ringBand *= 0.75 + 0.25 * ridges;
 
   float hueMix = fract(haze + n2 * (0.08 + uHueChaos * 0.25) + pulse * 0.05);
   float hueA = fract(uHuePair.x / 360.0 + (uMoodPole * 0.03));
@@ -120,6 +140,27 @@ void main() {
 
   float blurGlow = smoothstep(1.25, 0.0, length(uv)) * uBlur * 0.25;
   color += blurGlow;
+
+  float idleHeartbeat = (sin(uTime * (0.7 + uWaveSpeed * 0.35)) * 0.5 + 0.5);
+  float idleCore = exp(-pow(boomDist / 0.11, 2.2)) * (0.012 + 0.028 * uPulseStrength) * idleHeartbeat;
+
+  float thumpRadius = 0.085 + uBoomEnvelope * 0.13;
+  float thumpCore = exp(-pow(boomDist / max(thumpRadius, 0.0001), 2.4));
+  float innerShadow = thumpCore * uBoomEnvelope * 0.08;
+  float thumpLift = thumpCore * (0.025 + 0.12 * uBoomEnvelope) + idleCore;
+
+  float ringAccent = ringBand * (0.02 + 0.22 * uBoomRing) * (0.7 + 0.3 * uPulseStrength);
+  float ringHue = fract(mix(hueA, hueB, 0.42 + pulse * 0.08));
+  vec3 ringColor = hsl2rgb(vec3(
+    ringHue,
+    clamp(uSaturation * 0.85 + sparkle * 0.05, 0.0, 1.0),
+    clamp(0.45 + uBrightness * 0.35, 0.0, 1.0)
+  ));
+
+  color *= (1.0 - innerShadow);
+  color += ringColor * ringAccent * (0.45 + 0.25 * uBoomFlash);
+  color += ringColor * thumpLift * 0.12;
+  color += vec3(1.0) * ringAccent * uBoomFlash * 0.035;
 
   float vignette = smoothstep(1.45, 0.25 + (1.0 - uVignette) * 0.6, length(uv));
   color *= mix(1.0, vignette, clamp(uVignette, 0.0, 1.0));
@@ -145,6 +186,11 @@ type Uniforms = {
   uScale: { value: number };
   uBlur: { value: number };
   uVignette: { value: number };
+  uBoomEnvelope: { value: number };
+  uBoomRing: { value: number };
+  uBoomAge: { value: number };
+  uBoomWarp: { value: number };
+  uBoomFlash: { value: number };
 };
 
 function createUniforms(): Uniforms {
@@ -165,6 +211,11 @@ function createUniforms(): Uniforms {
     uScale: { value: DEFAULT_VISUAL_STATE.scale },
     uBlur: { value: DEFAULT_VISUAL_STATE.blur },
     uVignette: { value: DEFAULT_VISUAL_STATE.vignette },
+    uBoomEnvelope: { value: 0 },
+    uBoomRing: { value: 0 },
+    uBoomAge: { value: 10 },
+    uBoomWarp: { value: 0 },
+    uBoomFlash: { value: 0 },
   };
 }
 
@@ -189,6 +240,7 @@ export function createQualiaEngine(
   canvas: HTMLCanvasElement,
   options: QualiaEngineOptions = {},
 ): QualiaEngine {
+  const clamp01 = (value: number) => Math.min(Math.max(value, 0), 1);
   const transitionSmoothing = options.transitionSmoothing ?? true;
   const renderer = new THREE.WebGLRenderer({
     canvas,
@@ -218,6 +270,16 @@ export function createQualiaEngine(
   let lastTimeMs = 0;
   let currentState = normalizeVisualState(DEFAULT_VISUAL_STATE, performance.now());
   let targetState = currentState;
+  let impactEnvelope = 0;
+  let impactRing = 0;
+  let impactAge = 10;
+  let impactFlash = 0;
+  let lastImpactTriggerMs = -1000;
+  let impactSignalSmoothed =
+    currentState.pulse_strength * 0.82 +
+    currentState.turbulence * 0.12 +
+    Math.min(currentState.wave_speed / 2, 1) * 0.06;
+  let previousImpactSignal = impactSignalSmoothed;
 
   const resize = (width?: number, height?: number) => {
     const rect = canvas.getBoundingClientRect();
@@ -244,6 +306,44 @@ export function createQualiaEngine(
     const alpha = transitionSmoothing ? expSmoothingFactor(dt, 5.5) : 1;
     currentState = interpolateVisualState(currentState, targetState, alpha);
     currentState._timestamp = timeMs;
+
+    const impactSignal = clamp01(
+      currentState.pulse_strength * 0.82 +
+        currentState.turbulence * 0.12 +
+        Math.min(currentState.wave_speed / 2, 1) * 0.06,
+    );
+    const smoothing = Math.min(1, dt * 14);
+    impactSignalSmoothed += (impactSignal - impactSignalSmoothed) * smoothing;
+    const rise = impactSignalSmoothed - previousImpactSignal;
+    previousImpactSignal = impactSignalSmoothed;
+
+    const impactCooldownMs = 90;
+    if (
+      timeMs - lastImpactTriggerMs >= impactCooldownMs &&
+      impactSignalSmoothed > 0.18 &&
+      rise > 0.012
+    ) {
+      const triggerStrength = clamp01(
+        (impactSignalSmoothed - 0.18) * 2.0 + (rise - 0.012) * 24,
+      );
+      impactEnvelope = Math.max(impactEnvelope, 0.32 + triggerStrength * 0.78);
+      impactRing = Math.max(impactRing, 0.35 + triggerStrength * 0.8);
+      impactFlash = Math.max(impactFlash, 0.12 + triggerStrength * 0.42);
+      impactAge = 0;
+      lastImpactTriggerMs = timeMs;
+    } else {
+      impactAge = Math.min(10, impactAge + dt);
+    }
+
+    impactEnvelope *= Math.exp(-dt * (4.4 + currentState.wave_speed * 0.65));
+    impactRing *= Math.exp(-dt * 5.8);
+    impactFlash *= Math.exp(-dt * 8.6);
+
+    uniforms.uBoomEnvelope.value = clamp01(impactEnvelope);
+    uniforms.uBoomRing.value = clamp01(impactRing);
+    uniforms.uBoomAge.value = impactAge;
+    uniforms.uBoomWarp.value = clamp01(impactEnvelope * 0.75 + impactRing * 0.55);
+    uniforms.uBoomFlash.value = clamp01(impactFlash);
 
     uniforms.uTime.value = timeMs / 1000;
     copyStateToUniforms(uniforms, currentState);
