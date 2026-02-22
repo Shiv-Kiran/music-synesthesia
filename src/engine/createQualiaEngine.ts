@@ -141,26 +141,70 @@ void main() {
   float blurGlow = smoothstep(1.25, 0.0, length(uv)) * uBlur * 0.25;
   color += blurGlow;
 
-  float idleHeartbeat = (sin(uTime * (0.7 + uWaveSpeed * 0.35)) * 0.5 + 0.5);
-  float idleCore = exp(-pow(boomDist / 0.11, 2.2)) * (0.012 + 0.028 * uPulseStrength) * idleHeartbeat;
+  float slowBreath = sin(uTime * (0.9 + uWaveSpeed * 0.12) + n1 * 0.7) * 0.5 + 0.5;
+  vec2 presenceUv = boomVec;
+  float presenceTime = uTime * (0.18 + uWaveSpeed * 0.1);
+  float presenceNoiseA = noise(
+    presenceUv * (2.2 + uTurbulence * 2.8) + vec2(presenceTime * 1.2, -presenceTime * 0.9)
+  );
+  float presenceNoiseB = noise(
+    (presenceUv + vec2(1.8, -2.4)) * (4.0 + uTurbulence * 3.6) - vec2(presenceTime * 1.7, presenceTime * 1.3)
+  );
+  float presenceNoiseC = noise(
+    vec2(atan(boomVec.y, boomVec.x) * 0.65, boomDist * (6.0 + uTurbulence * 4.0)) +
+    vec2(presenceTime * 0.6, -presenceTime * 0.35)
+  );
+  float asymmetry = (presenceNoiseA - 0.5) * (0.18 + uTurbulence * 0.18) +
+                    (presenceNoiseB - 0.5) * (0.08 + uBoomEnvelope * 0.08);
+  float presenceDist = boomDist * (1.0 + asymmetry);
+  float presenceRadius = 0.19 + slowBreath * 0.045 + uPulseStrength * 0.035 + uBoomEnvelope * 0.11;
+  float presenceCore = exp(-pow(max(presenceDist, 0.0) / max(presenceRadius, 0.0001), 2.15));
+  float presenceAura = exp(-pow(max(presenceDist, 0.0) / max(presenceRadius * 2.25, 0.0001), 1.45));
+  float presencePeriphery = smoothstep(0.0, 1.0, presenceAura - presenceCore * 0.65);
+  float interiorFlow = sin(
+    presenceNoiseA * 6.28318 +
+    presenceNoiseB * 2.4 +
+    boomDist * (8.0 + uTurbulence * 6.0) -
+    presenceTime * (2.0 + uWaveSpeed * 0.4)
+  ) * 0.5 + 0.5;
+  float interiorRipple = sin(
+    boomDist * (14.0 + uTurbulence * 10.0) -
+    presenceTime * (3.2 + uWaveSpeed * 0.65) +
+    presenceNoiseC * 4.0
+  ) * 0.5 + 0.5;
+  float tendrilDetail = presencePeriphery *
+    smoothstep(0.52, 0.95, presenceNoiseB) *
+    (0.015 + (uTurbulence + uParticleDensity) * 0.04 + uBoomRing * 0.035);
 
-  float thumpRadius = 0.085 + uBoomEnvelope * 0.13;
-  float thumpCore = exp(-pow(boomDist / max(thumpRadius, 0.0001), 2.4));
-  float innerShadow = thumpCore * uBoomEnvelope * 0.11;
-  float thumpLift = thumpCore * (0.018 + 0.085 * uBoomEnvelope) + idleCore;
+  float thumpRadius = 0.075 + uBoomEnvelope * 0.12;
+  float thumpCore = exp(-pow(boomDist / max(thumpRadius, 0.0001), 2.35));
+  float centerIndent = thumpCore * uBoomEnvelope * 0.085;
 
-  float ringAccent = ringBand * (0.015 + 0.17 * uBoomRing) * (0.7 + 0.3 * uPulseStrength);
+  float ringAccent = ringBand * (0.012 + 0.13 * uBoomRing) * (0.65 + 0.35 * uPulseStrength);
   float ringHue = fract(mix(hueA, hueB, 0.42 + pulse * 0.08));
   vec3 ringColor = hsl2rgb(vec3(
     ringHue,
     clamp(uSaturation * 0.85 + sparkle * 0.05, 0.0, 1.0),
     clamp(0.36 + uBrightness * 0.22, 0.0, 1.0)
   ));
+  float presenceHue = fract(mix(hueA, hueB, 0.3 + interiorFlow * 0.45) + (interiorRipple - 0.5) * 0.03);
+  vec3 presenceColor = hsl2rgb(vec3(
+    presenceHue,
+    clamp(uSaturation * 0.8 + presencePeriphery * 0.08 + uTurbulence * 0.05, 0.0, 1.0),
+    clamp(0.3 + uBrightness * 0.18 + interiorFlow * 0.1, 0.0, 1.0)
+  ));
+  float presenceLift =
+    presenceAura * (0.02 + slowBreath * 0.01) +
+    presenceCore * (0.028 + uBoomEnvelope * 0.04) +
+    presenceCore * interiorFlow * 0.026 +
+    presencePeriphery * interiorRipple * 0.016 +
+    tendrilDetail;
 
   // Keep the impact punch contrast- and motion-driven instead of washing out the whole field.
-  color *= (1.0 - innerShadow);
+  color *= (1.0 - centerIndent);
+  color += presenceColor * presenceLift;
   color += ringColor * ringAccent * (0.4 + 0.2 * uBoomFlash);
-  color += ringColor * thumpLift * 0.085;
+  color += ringColor * thumpCore * (0.018 + uBoomEnvelope * 0.03);
   color += vec3(1.0) * ringAccent * uBoomFlash * 0.016;
 
   float vignette = smoothstep(1.45, 0.25 + (1.0 - uVignette) * 0.6, length(uv));
