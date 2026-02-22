@@ -54,6 +54,8 @@ uniform float uBoomAge;
 uniform float uBoomWarp;
 uniform float uBoomFlash;
 uniform float uBoomRecoil;
+uniform float uPresetMode;
+uniform float uColorEmergence;
 
 varying vec2 vUv;
 
@@ -89,6 +91,100 @@ void main() {
   vec2 boomVec = uv - boomCenter;
   float boomDist = length(boomVec);
   vec2 boomDir = boomDist > 0.0001 ? boomVec / boomDist : vec2(0.0, 1.0);
+
+  if (uPresetMode > 0.5) {
+    float radial = max(boomDist, 0.0001);
+    float radialCurve = pow(radial, 1.65);
+    float angleField = atan(boomVec.y, boomVec.x);
+    float monoTime = uTime * (0.22 + uWaveSpeed * 0.08);
+
+    float corePopRadius = max(0.06, 0.09 + uBoomEnvelope * 0.13 - uBoomRecoil * 0.05);
+    float coreBody = exp(-pow(radial / corePopRadius, 2.6));
+    float coreHalo = exp(-pow(radial / (0.2 + uBoomEnvelope * 0.06), 1.75));
+    float coreNoise = noise(
+      boomVec * (7.0 + uTurbulence * 4.0) +
+      vec2(monoTime * 0.9, -monoTime * 0.6)
+    );
+    float coreCuts = smoothstep(
+      0.58,
+      0.93,
+      sin(angleField * 5.0 + coreNoise * 4.0 + monoTime * 0.45) * 0.5 + 0.5
+    );
+
+    float ringOuterMask = 1.0 - smoothstep(0.75, 1.45, radial);
+    float ringInnerMask = smoothstep(0.08, 0.2, radial);
+    float ringZone = ringOuterMask * ringInnerMask;
+
+    float rippleNoise = noise(
+      vec2(radial * (9.0 + uTurbulence * 2.4), angleField * 2.0 + 12.0) +
+      vec2(monoTime * 0.35, -monoTime * 0.2)
+    );
+    float ripplePhase =
+      radialCurve * (34.0 + uTurbulence * 10.0) -
+      monoTime * (4.0 + uWaveSpeed * 0.7) -
+      uBoomAge * (4.0 + uBoomRing * 1.4) +
+      (rippleNoise - 0.5) * 2.2;
+    float rippleWave = sin(ripplePhase) * 0.5 + 0.5;
+    float rippleWhiteBands = smoothstep(0.62, 0.97, rippleWave);
+    float rippleBlackBands = smoothstep(0.08, 0.42, rippleWave);
+
+    float frontRadius = 0.02 + pow(min(uBoomAge, 1.8), 1.2) * (0.48 + uWaveSpeed * 0.07);
+    float frontCurve = pow(max(frontRadius, 0.0001), 1.65);
+    float beatFrontBand = exp(-pow((radialCurve - frontCurve) / 0.055, 2.0));
+
+    float monoValue = 0.02;
+    monoValue += coreHalo * (0.12 + uPulseStrength * 0.04);
+    monoValue += coreBody * (0.58 + uBoomEnvelope * 0.42);
+    monoValue += ringZone * rippleWhiteBands * (0.2 + uBoomRing * 0.22 + uPulseStrength * 0.05);
+    monoValue += beatFrontBand * (0.06 + uBoomRing * 0.12 + uBoomFlash * 0.06);
+    monoValue -= coreBody * coreCuts * (0.18 + uBoomEnvelope * 0.28);
+    monoValue -= ringZone * rippleBlackBands * (0.16 + uTurbulence * 0.06);
+    monoValue -= smoothstep(0.28, 1.55, radial) * 0.84;
+    monoValue = clamp(monoValue, 0.0, 1.0);
+
+    float monoContrast = smoothstep(0.12, 0.92, monoValue);
+    monoContrast = mix(monoContrast, smoothstep(0.44, 0.56, monoContrast), 0.22);
+    monoContrast = clamp(monoContrast, 0.0, 1.0);
+
+    float hueA = fract(uHuePair.x / 360.0 + uMoodPole * 0.01);
+    float hueB = fract(uHuePair.y / 360.0 - uMoodPole * 0.01);
+    float chroma = smoothstep(0.18, 0.98, clamp(uColorEmergence, 0.0, 1.0));
+    float colorFrontRadius = 0.08 + pow(chroma, 0.9) * 1.15;
+    float colorFrontMask = 1.0 - smoothstep(
+      colorFrontRadius - 0.03,
+      colorFrontRadius + 0.22,
+      radial
+    );
+    float colorWave = sin(
+      radialCurve * (10.5 + uTurbulence * 4.0) -
+      monoTime * 1.45 +
+      angleField * 0.35 +
+      rippleNoise * 2.6
+    ) * 0.5 + 0.5;
+    float tintHue = fract(mix(hueA, hueB, 0.34 + colorWave * 0.44));
+    vec3 tintColor = hsl2rgb(vec3(tintHue, 0.85, 0.55));
+    float tintMask =
+      chroma * colorFrontMask * (
+        ringZone * (0.08 + rippleWhiteBands * 0.28) +
+        coreHalo * 0.06 +
+        beatFrontBand * 0.14
+      );
+    tintMask *= (1.0 - coreBody * 0.62);
+    tintMask += chroma * coreBody * 0.035;
+
+    vec3 color = vec3(monoContrast);
+    color += tintColor * tintMask * (0.35 + monoContrast * 0.65);
+    color += vec3(1.0) * beatFrontBand * uBoomFlash * 0.01;
+
+    float presetBlur = smoothstep(1.05, 0.0, radial) * uBlur * 0.05;
+    color += vec3(presetBlur);
+
+    float vignette = smoothstep(1.45, 0.25 + (1.0 - uVignette) * 0.6, length(uv));
+    color *= mix(1.0, vignette, clamp(uVignette, 0.0, 1.0));
+
+    gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+    return;
+  }
 
   float ringRadius = 0.04 + uBoomAge * (0.28 + uWaveSpeed * 0.1);
   float ringWidth = mix(0.014, 0.042, clamp(uBoomRing, 0.0, 1.0));
@@ -270,6 +366,8 @@ type Uniforms = {
   uBoomWarp: { value: number };
   uBoomFlash: { value: number };
   uBoomRecoil: { value: number };
+  uPresetMode: { value: number };
+  uColorEmergence: { value: number };
 };
 
 function createUniforms(): Uniforms {
@@ -296,6 +394,8 @@ function createUniforms(): Uniforms {
     uBoomWarp: { value: 0 },
     uBoomFlash: { value: 0 },
     uBoomRecoil: { value: 0 },
+    uPresetMode: { value: 0 },
+    uColorEmergence: { value: 0 },
   };
 }
 
@@ -349,6 +449,7 @@ export function createQualiaEngine(
   let frameId = 0;
   let lastTimeMs = 0;
   let visualizerPreset: VisualizerPresetId = "organic_presence";
+  let colorEmergence = 0;
   let currentState = normalizeVisualState(DEFAULT_VISUAL_STATE, performance.now());
   let targetState = currentState;
   let impactEnvelope = 0;
@@ -423,12 +524,31 @@ export function createQualiaEngine(
     impactFlash *= Math.exp(-dt * 6.8);
     impactRecoil *= Math.exp(-dt * 1.8);
 
+    const presetMode = visualizerPreset === "monochrome_concentric_emergence" ? 1 : 0;
+    if (presetMode === 1) {
+      const energyDrive = clamp01(
+        impactSignalSmoothed * 0.95 +
+          currentState.pulse_strength * 0.25 +
+          currentState.turbulence * 0.12 -
+          0.08,
+      );
+      const attackAlpha = 1 - Math.exp(-dt * (0.24 + energyDrive * 0.55));
+      const releaseAlpha = 1 - Math.exp(-dt * 0.08);
+      colorEmergence +=
+        (energyDrive - colorEmergence) *
+        (energyDrive > colorEmergence ? attackAlpha : releaseAlpha);
+    } else {
+      colorEmergence *= Math.exp(-dt * 0.7);
+    }
+
     uniforms.uBoomEnvelope.value = clamp01(impactEnvelope);
     uniforms.uBoomRing.value = clamp01(impactRing);
     uniforms.uBoomAge.value = impactAge;
     uniforms.uBoomWarp.value = clamp01(impactEnvelope * 0.75 + impactRing * 0.55);
     uniforms.uBoomFlash.value = clamp01(impactFlash);
     uniforms.uBoomRecoil.value = clamp01(impactRecoil);
+    uniforms.uPresetMode.value = presetMode;
+    uniforms.uColorEmergence.value = clamp01(colorEmergence);
 
     uniforms.uTime.value = timeMs / 1000;
     copyStateToUniforms(uniforms, currentState);
@@ -443,7 +563,9 @@ export function createQualiaEngine(
 
   const setVisualizerPreset = (preset: VisualizerPresetId) => {
     visualizerPreset = preset;
-    void visualizerPreset;
+    if (preset === "monochrome_concentric_emergence") {
+      colorEmergence = 0;
+    }
   };
 
   resize();
