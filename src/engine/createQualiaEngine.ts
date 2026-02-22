@@ -88,12 +88,12 @@ void main() {
   vec2 boomDir = boomDist > 0.0001 ? boomVec / boomDist : vec2(0.0, 1.0);
 
   float ringRadius = 0.045 + uBoomAge * (0.42 + uWaveSpeed * 0.18);
-  float ringWidth = mix(0.018, 0.055, clamp(uBoomRing, 0.0, 1.0));
+  float ringWidth = mix(0.014, 0.042, clamp(uBoomRing, 0.0, 1.0));
   float ringBand = exp(-pow((boomDist - ringRadius) / max(ringWidth, 0.0001), 2.0));
   float centerCompression = exp(-pow(boomDist / 0.24, 2.0)) * uBoomEnvelope;
   float localPressure = smoothstep(0.95, 0.0, boomDist);
   float pressureWarp =
-    (-centerCompression * 0.012 + ringBand * uBoomWarp * 0.01) * localPressure;
+    (-centerCompression * 0.015 + ringBand * uBoomWarp * 0.008) * localPressure;
   uv += boomDir * pressureWarp;
 
   float angle = radians(uFlowDirection);
@@ -146,21 +146,22 @@ void main() {
 
   float thumpRadius = 0.085 + uBoomEnvelope * 0.13;
   float thumpCore = exp(-pow(boomDist / max(thumpRadius, 0.0001), 2.4));
-  float innerShadow = thumpCore * uBoomEnvelope * 0.08;
-  float thumpLift = thumpCore * (0.025 + 0.12 * uBoomEnvelope) + idleCore;
+  float innerShadow = thumpCore * uBoomEnvelope * 0.11;
+  float thumpLift = thumpCore * (0.018 + 0.085 * uBoomEnvelope) + idleCore;
 
-  float ringAccent = ringBand * (0.02 + 0.22 * uBoomRing) * (0.7 + 0.3 * uPulseStrength);
+  float ringAccent = ringBand * (0.015 + 0.17 * uBoomRing) * (0.7 + 0.3 * uPulseStrength);
   float ringHue = fract(mix(hueA, hueB, 0.42 + pulse * 0.08));
   vec3 ringColor = hsl2rgb(vec3(
     ringHue,
     clamp(uSaturation * 0.85 + sparkle * 0.05, 0.0, 1.0),
-    clamp(0.45 + uBrightness * 0.35, 0.0, 1.0)
+    clamp(0.36 + uBrightness * 0.22, 0.0, 1.0)
   ));
 
+  // Keep the impact punch contrast- and motion-driven instead of washing out the whole field.
   color *= (1.0 - innerShadow);
-  color += ringColor * ringAccent * (0.45 + 0.25 * uBoomFlash);
-  color += ringColor * thumpLift * 0.12;
-  color += vec3(1.0) * ringAccent * uBoomFlash * 0.035;
+  color += ringColor * ringAccent * (0.4 + 0.2 * uBoomFlash);
+  color += ringColor * thumpLift * 0.085;
+  color += vec3(1.0) * ringAccent * uBoomFlash * 0.016;
 
   float vignette = smoothstep(1.45, 0.25 + (1.0 - uVignette) * 0.6, length(uv));
   color *= mix(1.0, vignette, clamp(uVignette, 0.0, 1.0));
