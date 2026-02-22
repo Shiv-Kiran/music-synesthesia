@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   CALIBRATION_DURATION_MS,
   computeCalibrationProgress,
   createAudioGateStateFromCalibration,
 } from "@/audio/calibrate";
+import {
+  getDevDemoAudioClipById,
+  type DevDemoAudioClip,
+} from "@/audio/dev-demo-clips";
 import {
   createSyntheticAudioSource,
   type SyntheticAudioSource,
@@ -126,6 +130,9 @@ export function MicSessionFlow() {
   const [featureStats, setFeatureStats] = useState<MicFeatureStats>(INITIAL_FEATURE_STATS);
   const [autoAdvanceInMs, setAutoAdvanceInMs] = useState<number | null>(null);
   const [inputMode, setInputMode] = useState<SessionInputMode | null>(null);
+  const [activeDevDemoClipId, setActiveDevDemoClipId] = useState<string | null>(null);
+  const [devDemoPlaying, setDevDemoPlaying] = useState(false);
+  const [devDemoPlaybackError, setDevDemoPlaybackError] = useState<string | null>(null);
   const [promptMachineState, setPromptMachineState] = useState<PromptMachineState>(() =>
     createPromptMachineState(0),
   );
@@ -152,6 +159,13 @@ export function MicSessionFlow() {
   const previousAudioFeaturesForPromptRef = useRef<AudioFeatures | null>(null);
   const lastPromptUiSyncAtRef = useRef<number>(0);
   const promptZoneHeldRef = useRef(false);
+  const settleVisualPreviewRef = useRef<(active: boolean, intensity?: number) => void>(
+    () => {},
+  );
+  const devDemoAudioRef = useRef<HTMLAudioElement | null>(null);
+  const devDemoPreviewRafRef = useRef<number | null>(null);
+  const devDemoPreviewClipRef = useRef<DevDemoAudioClip | null>(null);
+  const devDemoPreviewSourceRef = useRef<SyntheticAudioSource | null>(null);
 
   const supported = useMemo(() => isMicSupported(), []);
   const devBypassEnabled = process.env.NODE_ENV !== "production";
@@ -163,17 +177,33 @@ export function MicSessionFlow() {
     }
   }
 
+  function stopDevDemoPreviewLoop() {
+    if (devDemoPreviewRafRef.current !== null) {
+      cancelAnimationFrame(devDemoPreviewRafRef.current);
+      devDemoPreviewRafRef.current = null;
+    }
+  }
+
   useEffect(() => {
     resetVisualState();
+    const demoAudio = devDemoAudioRef.current;
     return () => {
       disposedRef.current = true;
       stopLoop();
+      stopDevDemoPreviewLoop();
+      if (demoAudio) {
+        demoAudio.pause();
+        demoAudio.src = "";
+      }
       const controller = micControllerRef.current;
       micControllerRef.current = null;
       syntheticAudioSourceRef.current = null;
       inputModeRef.current = null;
       featureBuffersRef.current = null;
       setInputMode(null);
+      setActiveDevDemoClipId(null);
+      setDevDemoPlaying(false);
+      setDevDemoPlaybackError(null);
       setAudioFeatures({ ...EMPTY_AUDIO_FEATURES });
       setAudioGateState(null);
       void controller?.dispose();
@@ -217,7 +247,7 @@ export function MicSessionFlow() {
     }
   };
 
-  const settleVisualPreview = (active: boolean, intensity = 0) => {
+  const settleVisualPreview = useCallback((active: boolean, intensity = 0) => {
     if (active) {
       const clamped = Math.min(Math.max(intensity, 0), 3);
       applyDelta({
@@ -247,7 +277,7 @@ export function MicSessionFlow() {
       lerp_ms: 220,
       source: "audio",
     });
-  };
+  }, [applyDelta]);
 
   const clamp01 = (value: number) => Math.min(Math.max(value, 0), 1);
   const clampWaveSpeed = (value: number) => Math.min(Math.max(value, 0), 2);
@@ -292,6 +322,92 @@ export function MicSessionFlow() {
       source: "audio",
     });
   };
+  useEffect(() => {
+    settleVisualPreviewRef.current = settleVisualPreview;
+  }, [settleVisualPreview]);
+
+  useEffect(() => {
+    const audio = devDemoAudioRef.current;
+    if (!audio) {
+      return;
+    }
+
+    const handlePlay = () => setDevDemoPlaying(true);
+    const handlePause = () => setDevDemoPlaying(false);
+    const handleEnded = () => {
+      setDevDemoPlaying(false);
+      stopDevDemoPreviewLoop();
+      settleVisualPreviewRef.current(false);
+    };
+
+    audio.addEventListener("play", handlePlay);
+    audio.addEventListener("pause", handlePause);
+    audio.addEventListener("ended", handleEnded);
+    return () => {
+      audio.removeEventListener("play", handlePlay);
+      audio.removeEventListener("pause", handlePause);
+      audio.removeEventListener("ended", handleEnded);
+    };
+  }, []);
+
+  const stopDevDemoPlayback = () => {
+    stopDevDemoPreviewLoop();
+    const audio = devDemoAudioRef.current;
+    if (audio) {
+      audio.pause();
+      try {
+        audio.currentTime = 0;
+      } catch {
+        // ignore media seek errors while source changes
+      }
+    }
+    setDevDemoPlaying(false);
+    setActiveDevDemoClipId(null);
+    setDevDemoPlaybackError(null);
+    devDemoPreviewClipRef.current = null;
+    settleVisualPreview(false);
+  };
+
+  const startDevDemoPreviewLoop = () => {
+    stopDevDemoPreviewLoop();
+
+    const audio = devDemoAudioRef.current;
+    const clip = devDemoPreviewClipRef.current;
+    if (!audio || !clip) {
+      return;
+    }
+
+    if (!devDemoPreviewSourceRef.current) {
+      devDemoPreviewSourceRef.current = createSyntheticAudioSource();
+    }
+
+    const loop = () => {
+      if (disposedRef.current) {
+        return;
+      }
+
+      const previewAudio = devDemoAudioRef.current;
+      const previewClip = devDemoPreviewClipRef.current;
+      const previewSource = devDemoPreviewSourceRef.current;
+      if (!previewAudio || !previewClip || !previewSource) {
+        return;
+      }
+
+      if (!previewAudio.paused) {
+        const syntheticTimeMs =
+          (previewClip.synthetic_start_s + Math.max(0, previewAudio.currentTime)) * 1000;
+        const features = previewSource.sampleFeatures(syntheticTimeMs);
+        const pseudoThresholdRms = 0.014;
+        const gateActive = features.rms >= pseudoThresholdRms * 0.86;
+        const intensity = Math.min(Math.max(features.rms / pseudoThresholdRms, 0), 3);
+        applyAudioReactivePreview(features, gateActive, intensity);
+      }
+
+      devDemoPreviewRafRef.current = requestAnimationFrame(loop);
+    };
+
+    devDemoPreviewRafRef.current = requestAnimationFrame(loop);
+  };
 
   const processAudioFrame = (timeMs: number, syntheticElapsedMs?: number) => {
     const gateState = gateStateRef.current;
@@ -335,6 +451,7 @@ export function MicSessionFlow() {
   };
 
   const enterReady = () => {
+    stopDevDemoPlayback();
     setAutoAdvanceInMs(null);
     const readyStartedAt = getNowMs();
     sessionStartedAtRef.current = readyStartedAt;
@@ -344,6 +461,7 @@ export function MicSessionFlow() {
 
   const resetToPermission = () => {
     stopLoop();
+    stopDevDemoPlayback();
     const controller = micControllerRef.current;
     micControllerRef.current = null;
     syntheticAudioSourceRef.current = null;
@@ -577,6 +695,7 @@ export function MicSessionFlow() {
       return;
     }
 
+    stopDevDemoPlayback();
     setPermissionError(null);
     setPhase("requesting");
 
@@ -619,6 +738,7 @@ export function MicSessionFlow() {
     }
 
     stopLoop();
+    stopDevDemoPlayback();
     const controller = micControllerRef.current;
     micControllerRef.current = null;
     featureBuffersRef.current = null;
@@ -629,6 +749,43 @@ export function MicSessionFlow() {
     inputModeRef.current = "synthetic";
     setInputMode("synthetic");
     startCalibrationLoop();
+  };
+
+  const handleToggleDevDemoClip = async (clipId: string) => {
+    if (!devBypassEnabled) {
+      return;
+    }
+
+    const audio = devDemoAudioRef.current;
+    const clip = getDevDemoAudioClipById(clipId);
+    if (!audio || !clip) {
+      return;
+    }
+
+    setDevDemoPlaybackError(null);
+
+    if (activeDevDemoClipId === clipId && !audio.paused) {
+      audio.pause();
+      stopDevDemoPreviewLoop();
+      settleVisualPreview(false);
+      return;
+    }
+
+    try {
+      if (activeDevDemoClipId !== clipId) {
+        audio.src = clip.href;
+        audio.load();
+      }
+
+      devDemoPreviewClipRef.current = clip;
+      setActiveDevDemoClipId(clip.id);
+      await audio.play();
+      startDevDemoPreviewLoop();
+    } catch (error) {
+      setDevDemoPlaybackError(
+        error instanceof Error ? error.message : "Could not play demo clip.",
+      );
+    }
   };
 
   const handlePromptChipSelect = (chipId: string, chipLabel: string) => {
@@ -679,6 +836,10 @@ export function MicSessionFlow() {
             onAllow={handleAllow}
             showDevBypass={devBypassEnabled}
             onUseDevBypass={handleUseDevBypass}
+            activeDevDemoClipId={activeDevDemoClipId}
+            devDemoPlaying={devDemoPlaying}
+            onToggleDevDemoClip={handleToggleDevDemoClip}
+            devDemoPlaybackError={devDemoPlaybackError}
           />
         ) : null}
 
@@ -769,6 +930,8 @@ export function MicSessionFlow() {
       ) : null}
 
       {phase === "ready" ? <MoodBar /> : null}
+
+      <audio ref={devDemoAudioRef} preload="none" className="hidden" />
     </div>
   );
 }
