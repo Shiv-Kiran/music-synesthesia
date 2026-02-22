@@ -270,18 +270,18 @@ export function MicSessionFlow() {
 
   const settleVisualPreview = useCallback((active: boolean, intensity = 0) => {
     if (active) {
-      const clamped = Math.min(Math.max(intensity, 0), 3);
+      const clamped = Math.min(Math.max(intensity, 0), 2.4);
       applyDelta({
         set: {
-          pulse_strength: Math.min(0.26 + clamped * 0.33, 1),
-          turbulence: Math.min(0.18 + clamped * 0.15, 1),
-          brightness: Math.min(0.22 + clamped * 0.03, 0.36),
-          hue_chaos: Math.min(0.07 + clamped * 0.03, 0.22),
-          particle_density: Math.min(0.24 + clamped * 0.1, 1),
-          wave_speed: Math.min(0.32 + clamped * 0.14, 2),
-          blur: Math.max(0.05, 0.095 - clamped * 0.01),
+          pulse_strength: Math.min(0.24 + clamped * 0.26, 1),
+          turbulence: Math.min(0.17 + clamped * 0.11, 1),
+          brightness: Math.min(0.22 + clamped * 0.022, 0.33),
+          hue_chaos: Math.min(0.07 + clamped * 0.022, 0.18),
+          particle_density: Math.min(0.23 + clamped * 0.075, 1),
+          wave_speed: Math.min(0.28 + clamped * 0.1, 2),
+          blur: Math.max(0.055, 0.09 - clamped * 0.007),
         },
-        lerp_ms: 90,
+        lerp_ms: 130,
         source: "audio",
       });
       return;
@@ -294,10 +294,10 @@ export function MicSessionFlow() {
         brightness: 0.25,
         hue_chaos: 0.1,
         particle_density: 0.28,
-        wave_speed: 0.32,
+        wave_speed: 0.3,
         blur: 0.085,
       },
-      lerp_ms: 220,
+      lerp_ms: 320,
       source: "audio",
     });
   }, [applyDelta]);
@@ -315,39 +315,39 @@ export function MicSessionFlow() {
       return;
     }
 
-    const intensityBias = Math.min(Math.max(intensity, 0), 3);
+    const intensityBias = Math.min(Math.max(intensity, 0), 2.4);
     const transient = clamp01(
-      features.bass_energy * 0.42 +
+      features.bass_energy * 0.34 +
         features.high_energy * 0.12 +
-        features.zero_crossing_rate * 0.65 +
-        Math.max(0, features.rms - 0.02) * 8,
+        features.zero_crossing_rate * 0.45 +
+        Math.max(0, features.rms - 0.02) * 5.8,
     );
     const impact = clamp01(
-      features.bass_energy * 0.58 +
-        features.rms * 2.6 +
-        transient * 0.72 +
-        intensityBias * 0.06,
+      features.bass_energy * 0.5 +
+        features.rms * 2.0 +
+        transient * 0.5 +
+        intensityBias * 0.04,
     );
     const textureDrive = clamp01(
-      features.mid_energy * 0.56 + features.high_energy * 0.12 + transient * 0.16,
+      features.mid_energy * 0.48 + features.high_energy * 0.1 + transient * 0.1,
     );
-    const brightnessLift = clamp01(features.rms * 0.7 + features.spectral_centroid * 0.05);
+    const brightnessLift = clamp01(features.rms * 0.5 + features.spectral_centroid * 0.035);
 
     applyDelta({
       set: {
-        pulse_strength: clamp01(0.18 + impact * 0.8),
-        turbulence: clamp01(0.1 + textureDrive * 0.42 + transient * 0.12),
-        brightness: clamp01(0.2 + brightnessLift * 0.1 + impact * 0.05),
-        hue_chaos: clamp01(0.05 + features.high_energy * 0.08 + transient * 0.05),
+        pulse_strength: clamp01(0.16 + impact * 0.68),
+        turbulence: clamp01(0.1 + textureDrive * 0.34 + transient * 0.08),
+        brightness: clamp01(0.2 + brightnessLift * 0.08 + impact * 0.035),
+        hue_chaos: clamp01(0.05 + features.high_energy * 0.05 + transient * 0.035),
         particle_density: clamp01(
-          0.18 + features.mid_energy * 0.2 + features.high_energy * 0.08 + transient * 0.06,
+          0.18 + features.mid_energy * 0.16 + features.high_energy * 0.06 + transient * 0.04,
         ),
         wave_speed: clampWaveSpeed(
-          0.18 + features.bass_energy * 0.52 + features.mid_energy * 0.26 + transient * 0.12,
+          0.16 + features.bass_energy * 0.34 + features.mid_energy * 0.16 + transient * 0.06,
         ),
-        blur: clamp01(0.05 + (1 - features.spectral_centroid) * 0.05 - impact * 0.015),
+        blur: clamp01(0.055 + (1 - features.spectral_centroid) * 0.04 - impact * 0.01),
       },
-      lerp_ms: 80,
+      lerp_ms: 140,
       source: "audio",
     });
   };
