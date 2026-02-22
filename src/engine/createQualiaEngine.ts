@@ -96,59 +96,118 @@ void main() {
     float radial = max(boomDist, 0.0001);
     float radialCurve = pow(radial, 1.65);
     float angleField = atan(boomVec.y, boomVec.x);
-    float monoTime = uTime * (0.22 + uWaveSpeed * 0.08);
+    float monoTime =
+      uTime * (0.2 + uWaveSpeed * 0.07) +
+      uBoomAge * (0.06 + uBoomRing * 0.05) +
+      uPulseStrength * 0.35;
+    float monoBreath = sin(uTime * 0.45 + radial * 4.0) * 0.5 + 0.5;
+    float angleWave = sin(
+      angleField * 7.0 +
+      monoTime * (0.52 + uPulseStrength * 0.18) +
+      radial * (5.0 + uBoomRing * 1.2)
+    );
+    float angleWave2 = sin(
+      angleField * 11.0 -
+      monoTime * (0.36 + uBoomEnvelope * 0.12) +
+      radial * (3.2 + uPulseStrength * 0.8)
+    );
+    float jitterWave = sin(
+      angleField * (20.0 + uTurbulence * 3.8) +
+      radial * (13.6 + uBoomRing * 6.8) -
+      uTime * (0.52 + uPulseStrength * 0.95)
+    );
+    float jitterWave2 = sin(
+      angleField * (29.0 + uBoomRing * 4.5) -
+      radial * (17.0 + uPulseStrength * 6.0) +
+      uTime * (0.44 + uBoomEnvelope * 0.85)
+    );
 
-    float corePopRadius = max(0.06, 0.09 + uBoomEnvelope * 0.13 - uBoomRecoil * 0.05);
-    float coreBody = exp(-pow(radial / corePopRadius, 2.6));
-    float coreHalo = exp(-pow(radial / (0.2 + uBoomEnvelope * 0.06), 1.75));
+    float coreBoundaryRadius =
+      max(
+        0.38,
+        0.44 +
+        monoBreath * 0.08 +
+        uPulseStrength * 0.12 +
+        uBoomEnvelope * 0.2 -
+        uBoomRecoil * 0.09
+      );
+    float corePopRadius = max(0.25, coreBoundaryRadius * (0.9 + uBoomEnvelope * 0.05));
+    float coreBody = exp(-pow(radial / corePopRadius, 2.05));
+    float coreHalo = exp(-pow(radial / (coreBoundaryRadius + 0.2), 1.62));
     float coreNoise = noise(
-      boomVec * (7.0 + uTurbulence * 4.0) +
-      vec2(monoTime * 0.9, -monoTime * 0.6)
+      boomVec * (5.2 + uTurbulence * 2.6) +
+      vec2(monoTime * 0.55, -monoTime * 0.35)
     );
     float coreCuts = smoothstep(
-      0.58,
-      0.93,
-      sin(angleField * 5.0 + coreNoise * 4.0 + monoTime * 0.45) * 0.5 + 0.5
+      0.66,
+      0.96,
+      sin(angleField * 4.0 + coreNoise * 3.1 + monoTime * 0.28) * 0.5 + 0.5
     );
+    float coreRingZone =
+      (1.0 - smoothstep(coreBoundaryRadius * 0.92, coreBoundaryRadius * 1.08, radial)) *
+      smoothstep(0.06, coreBoundaryRadius * 0.96, radial);
+    float coreBandPhase =
+      radialCurve * (19.0 + uTurbulence * 3.0) -
+      monoTime * (1.6 + uWaveSpeed * 0.18) +
+      angleWave * 2.25 +
+      angleWave2 * 1.15 +
+      coreNoise * (1.9 + uPulseStrength * 0.7) +
+      jitterWave * (0.3 + uBoomRing * 0.72 + uPulseStrength * 0.18) +
+      jitterWave2 * (0.12 + uBoomFlash * 0.5);
+    float coreBandWave = sin(coreBandPhase) * 0.5 + 0.5;
+    float coreWhiteBands = smoothstep(0.6, 0.9, coreBandWave);
+    float coreBlackBands = smoothstep(0.14, 0.46, coreBandWave);
 
-    float ringOuterMask = 1.0 - smoothstep(0.75, 1.45, radial);
-    float ringInnerMask = smoothstep(0.08, 0.2, radial);
+    float ringOuterMask = 1.0 - smoothstep(0.95, 1.5, radial);
+    float ringInnerMask = smoothstep(coreBoundaryRadius * 0.82, coreBoundaryRadius * 1.08, radial);
     float ringZone = ringOuterMask * ringInnerMask;
 
     float rippleNoise = noise(
       vec2(radial * (9.0 + uTurbulence * 2.4), angleField * 2.0 + 12.0) +
-      vec2(monoTime * 0.35, -monoTime * 0.2)
+      vec2(monoTime * 0.22, -monoTime * 0.12)
     );
     float ripplePhase =
-      radialCurve * (34.0 + uTurbulence * 10.0) -
-      monoTime * (4.0 + uWaveSpeed * 0.7) -
-      uBoomAge * (4.0 + uBoomRing * 1.4) +
-      (rippleNoise - 0.5) * 2.2;
+      radialCurve * (24.0 + uTurbulence * 6.0) -
+      monoTime * (2.4 + uWaveSpeed * 0.4) -
+      uBoomAge * (2.8 + uBoomRing * 1.0) +
+      angleWave * 2.35 +
+      angleWave2 * 1.05 +
+      (rippleNoise - 0.5) * (0.9 + uPulseStrength * 0.9) +
+      jitterWave * (0.24 + uBoomRing * 0.82 + uPulseStrength * 0.46) +
+      jitterWave2 * (0.14 + uBoomFlash * 0.65);
     float rippleWave = sin(ripplePhase) * 0.5 + 0.5;
-    float rippleWhiteBands = smoothstep(0.62, 0.97, rippleWave);
-    float rippleBlackBands = smoothstep(0.08, 0.42, rippleWave);
+    float rippleWhiteBands = smoothstep(0.48, 0.86, rippleWave);
+    float rippleBlackBands = smoothstep(0.17, 0.54, rippleWave);
 
-    float frontRadius = 0.02 + pow(min(uBoomAge, 1.8), 1.2) * (0.48 + uWaveSpeed * 0.07);
+    float frontRadius =
+      coreBoundaryRadius * 0.78 +
+      pow(min(uBoomAge, 2.2), 1.13) * (0.41 + uWaveSpeed * 0.08 + uPulseStrength * 0.14);
     float frontCurve = pow(max(frontRadius, 0.0001), 1.65);
-    float beatFrontBand = exp(-pow((radialCurve - frontCurve) / 0.055, 2.0));
+    float beatFrontBand = exp(-pow((radialCurve - frontCurve) / 0.068, 2.0));
+    float boundaryRing = exp(-pow((radial - coreBoundaryRadius) / 0.034, 2.0));
 
-    float monoValue = 0.02;
-    monoValue += coreHalo * (0.12 + uPulseStrength * 0.04);
-    monoValue += coreBody * (0.58 + uBoomEnvelope * 0.42);
-    monoValue += ringZone * rippleWhiteBands * (0.2 + uBoomRing * 0.22 + uPulseStrength * 0.05);
-    monoValue += beatFrontBand * (0.06 + uBoomRing * 0.12 + uBoomFlash * 0.06);
-    monoValue -= coreBody * coreCuts * (0.18 + uBoomEnvelope * 0.28);
-    monoValue -= ringZone * rippleBlackBands * (0.16 + uTurbulence * 0.06);
-    monoValue -= smoothstep(0.28, 1.55, radial) * 0.84;
+    float monoValue = 0.05;
+    monoValue += coreHalo * (0.11 + uPulseStrength * 0.06);
+    monoValue += coreBody * (0.58 + uBoomEnvelope * 0.52 + uPulseStrength * 0.2);
+    monoValue += coreRingZone * coreWhiteBands * (0.28 + uBoomEnvelope * 0.22 + uPulseStrength * 0.08);
+    monoValue += boundaryRing * (0.14 + uBoomEnvelope * 0.3 + uPulseStrength * 0.14);
+    monoValue += ringZone * rippleWhiteBands * (0.36 + uBoomRing * 0.44 + uPulseStrength * 0.18);
+    monoValue += beatFrontBand * (0.15 + uBoomRing * 0.38 + uBoomFlash * 0.08 + uPulseStrength * 0.14);
+    monoValue -= coreBody * coreCuts * (0.21 + uBoomEnvelope * 0.24);
+    monoValue -= coreRingZone * coreBlackBands * (0.29 + uBoomEnvelope * 0.16);
+    monoValue -= ringZone * rippleBlackBands * (0.17 + uTurbulence * 0.07 + uPulseStrength * 0.05);
+    monoValue -= smoothstep(0.7, 1.6, radial) * 0.76;
     monoValue = clamp(monoValue, 0.0, 1.0);
 
-    float monoContrast = smoothstep(0.12, 0.92, monoValue);
-    monoContrast = mix(monoContrast, smoothstep(0.44, 0.56, monoContrast), 0.22);
+    float monoContrast = smoothstep(0.06, 0.98, monoValue);
+    monoContrast = mix(monoContrast, smoothstep(0.4, 0.6, monoContrast), 0.28);
+    monoContrast = pow(monoContrast, 0.94);
     monoContrast = clamp(monoContrast, 0.0, 1.0);
 
     float hueA = fract(uHuePair.x / 360.0 + uMoodPole * 0.01);
     float hueB = fract(uHuePair.y / 360.0 - uMoodPole * 0.01);
-    float chroma = smoothstep(0.18, 0.98, clamp(uColorEmergence, 0.0, 1.0));
+    // Monochrome preset stays black/white for now; future user-driven color can reuse this path.
+    float chroma = 0.0 * smoothstep(0.18, 0.98, clamp(uColorEmergence, 0.0, 1.0));
     float colorFrontRadius = 0.08 + pow(chroma, 0.9) * 1.15;
     float colorFrontMask = 1.0 - smoothstep(
       colorFrontRadius - 0.03,
@@ -156,25 +215,26 @@ void main() {
       radial
     );
     float colorWave = sin(
-      radialCurve * (10.5 + uTurbulence * 4.0) -
-      monoTime * 1.45 +
-      angleField * 0.35 +
+      radialCurve * (8.8 + uTurbulence * 3.0) -
+      monoTime * 1.05 +
+      angleField * 0.18 +
       rippleNoise * 2.6
     ) * 0.5 + 0.5;
     float tintHue = fract(mix(hueA, hueB, 0.34 + colorWave * 0.44));
     vec3 tintColor = hsl2rgb(vec3(tintHue, 0.85, 0.55));
     float tintMask =
       chroma * colorFrontMask * (
-        ringZone * (0.08 + rippleWhiteBands * 0.28) +
-        coreHalo * 0.06 +
-        beatFrontBand * 0.14
+        ringZone * (0.1 + rippleWhiteBands * 0.3) +
+        coreHalo * 0.05 +
+        beatFrontBand * 0.12
       );
     tintMask *= (1.0 - coreBody * 0.62);
     tintMask += chroma * coreBody * 0.035;
 
-    vec3 color = vec3(monoContrast);
+    float monoLuma = pow(monoContrast, 1.14) * 0.86;
+    vec3 color = vec3(monoLuma);
     color += tintColor * tintMask * (0.35 + monoContrast * 0.65);
-    color += vec3(1.0) * beatFrontBand * uBoomFlash * 0.01;
+    color += vec3(1.0) * beatFrontBand * uBoomFlash * 0.0025;
 
     float presetBlur = smoothstep(1.05, 0.0, radial) * uBlur * 0.05;
     color += vec3(presetBlur);
@@ -490,41 +550,60 @@ export function createQualiaEngine(
     currentState = interpolateVisualState(currentState, targetState, alpha);
     currentState._timestamp = timeMs;
 
+    const presetMode = visualizerPreset === "monochrome_concentric_emergence" ? 1 : 0;
+    const monoPreset = presetMode === 1;
+
     const impactSignal = clamp01(
       currentState.pulse_strength * 0.82 +
         currentState.turbulence * 0.12 +
         Math.min(currentState.wave_speed / 2, 1) * 0.06,
     );
-    const smoothing = Math.min(1, dt * 8);
+    const smoothing = Math.min(1, dt * (monoPreset ? 11.5 : 8));
     impactSignalSmoothed += (impactSignal - impactSignalSmoothed) * smoothing;
     const rise = impactSignalSmoothed - previousImpactSignal;
     previousImpactSignal = impactSignalSmoothed;
 
-    const impactCooldownMs = 105;
+    const impactCooldownMs = monoPreset ? 64 : 105;
+    const impactThreshold = monoPreset ? 0.07 : 0.12;
+    const riseThreshold = monoPreset ? 0.0024 : 0.0055;
     if (
       timeMs - lastImpactTriggerMs >= impactCooldownMs &&
-      impactSignalSmoothed > 0.12 &&
-      rise > 0.0055
+      impactSignalSmoothed > impactThreshold &&
+      rise > riseThreshold
     ) {
       const triggerStrength = clamp01(
-        (impactSignalSmoothed - 0.12) * 2.0 + (rise - 0.0055) * 24,
+        (impactSignalSmoothed - impactThreshold) * (monoPreset ? 3.2 : 2.0) +
+          (rise - riseThreshold) * (monoPreset ? 40 : 24),
       );
-      impactEnvelope = Math.max(impactEnvelope, 0.18 + triggerStrength * 0.88);
-      impactRing = Math.max(impactRing, 0.18 + triggerStrength * 0.76);
-      impactFlash = Math.max(impactFlash, 0.02 + triggerStrength * 0.22);
-      impactRecoil = Math.max(impactRecoil, 0.15 + triggerStrength * 0.7);
+      impactEnvelope = Math.max(
+        impactEnvelope,
+        (monoPreset ? 0.34 : 0.18) + triggerStrength * (monoPreset ? 1.02 : 0.88),
+      );
+      impactRing = Math.max(
+        impactRing,
+        (monoPreset ? 0.31 : 0.18) + triggerStrength * (monoPreset ? 0.96 : 0.76),
+      );
+      impactFlash = Math.max(
+        impactFlash,
+        (monoPreset ? 0.04 : 0.02) + triggerStrength * (monoPreset ? 0.22 : 0.22),
+      );
+      impactRecoil = Math.max(
+        impactRecoil,
+        (monoPreset ? 0.25 : 0.15) + triggerStrength * (monoPreset ? 0.82 : 0.7),
+      );
       impactAge = 0;
       lastImpactTriggerMs = timeMs;
     } else {
       impactAge = Math.min(10, impactAge + dt);
     }
 
-    impactEnvelope *= Math.exp(-dt * (3.4 + currentState.wave_speed * 0.3));
-    impactRing *= Math.exp(-dt * 3.0);
-    impactFlash *= Math.exp(-dt * 6.8);
-    impactRecoil *= Math.exp(-dt * 1.8);
+    impactEnvelope *= Math.exp(
+      -dt * ((monoPreset ? 2.35 : 3.4) + currentState.wave_speed * (monoPreset ? 0.2 : 0.3)),
+    );
+    impactRing *= Math.exp(-dt * (monoPreset ? 1.95 : 3.0));
+    impactFlash *= Math.exp(-dt * (monoPreset ? 4.8 : 6.8));
+    impactRecoil *= Math.exp(-dt * (monoPreset ? 1.2 : 1.8));
 
-    const presetMode = visualizerPreset === "monochrome_concentric_emergence" ? 1 : 0;
     if (presetMode === 1) {
       const energyDrive = clamp01(
         impactSignalSmoothed * 0.95 +
