@@ -306,25 +306,44 @@ function samplePeacefulDriftWave(seconds, sampleIndex, seed = 43) {
   return softClip((sub + bed + halo + air) * 0.62);
 }
 
-function samplePeacefulGlassWave(seconds, sampleIndex, seed = 47) {
-  const bpm = 78;
-  const pulseA = rhythmicPulse(seconds, bpm, 2, [0.22, 0, 0, 0.14, 0.18, 0, 0, 0.1], 10);
-  const pulseB = rhythmicPulse(seconds, bpm, 4, [0.05, 0, 0.08, 0, 0.04, 0, 0.07, 0], 18);
-  const tide = 0.5 + 0.5 * Math.sin(seconds * 0.08 + 1.6);
-  const drift = 0.5 + 0.5 * Math.sin(seconds * 0.14 + 0.3);
+function sampleStompDriveWave(seconds, sampleIndex, seed = 47) {
+  const bpm = 120;
+  const kick = rhythmicPulse(
+    seconds,
+    bpm,
+    4,
+    [1, 0, 0.24, 0, 0.86, 0, 0.18, 0, 0.94, 0, 0.16, 0.1, 0.8, 0, 0.22, 0],
+    13,
+  );
+  const snare = rhythmicPulse(
+    seconds,
+    bpm,
+    4,
+    [0, 0, 0.72, 0, 0, 0.16, 0.46, 0, 0, 0.12, 0.64, 0, 0, 0.18, 0.52, 0],
+    18,
+  );
+  const hat = rhythmicPulse(
+    seconds,
+    bpm,
+    8,
+    [0.26, 0.08, 0.2, 0.1, 0.3, 0.06, 0.18, 0.1, 0.24, 0.08, 0.22, 0.1, 0.28, 0.08, 0.2, 0.1],
+    28,
+  );
+  const clap = rhythmicPulse(seconds, bpm, 2, [0, 0.28, 0, 0.34, 0, 0.22, 0, 0.3], 20);
 
-  const root = 165 * Math.pow(2, (Math.floor(seconds * 0.25) % 4) / 12);
-  const glassA = sine(root * (1 + drift * 0.01), seconds, 0.1);
-  const glassB = sine(root * 1.5, seconds, 1.3);
-  const glassC = sine(root * 2.0 + 3 * tide, seconds, 2.1);
-  const lowPad = sine(55 + tide * 6, seconds, 0.4);
-  const shimmer = (noise01(sampleIndex, seed) * 2 - 1) * (0.004 + pulseB * 0.02);
+  const drive = 0.5 + 0.5 * Math.sin(seconds * 0.17 + 1.1);
+  const wobble = 0.5 + 0.5 * Math.sin(seconds * 0.41 + 0.7);
+  const sub = sine(46, seconds);
+  const bass = sine(68 + 10 * wobble, seconds, 0.1);
+  const body = sine(122 + 18 * drive, seconds, 0.45);
+  const top = sine(860 + 80 * drive, seconds, 0.2);
+  const grit = (noise01(sampleIndex, seed) * 2 - 1) * (0.01 + hat * 0.055 + snare * 0.03);
 
-  const harmonic = (glassA * 0.35 + glassB * 0.18 + glassC * 0.12) * (0.1 + pulseA * 0.18 + tide * 0.06);
-  const low = lowPad * (0.05 + pulseA * 0.06);
-  const air = sine(720 + drift * 40, seconds, 0.2) * (0.008 + pulseB * 0.02) + shimmer;
+  const low = (sub * 0.85 + bass * 0.46) * (0.07 + kick * 1.02);
+  const mid = body * (0.05 + snare * 0.22 + clap * 0.08);
+  const high = top * (0.008 + hat * 0.02 + clap * 0.012) + grit;
 
-  return softClip((harmonic + low + air) * 0.66);
+  return softClip((low + mid + high) * (0.84 + drive * 0.12) * 0.88);
 }
 
 function writeWavPcm16Mono(filePath, samples, sampleRate = SAMPLE_RATE) {
@@ -416,12 +435,12 @@ const clips = [
     sampler: samplePeacefulDriftWave,
   },
   {
-    fileName: "qualia-demo-peaceful-glass-16s.wav",
+    fileName: "qualia-demo-stomp-drive-16s.wav",
     startSeconds: 0,
     durationSeconds: 16,
-    label: "Peaceful glass loop",
+    label: "Stomp drive loop",
     seed: 47,
-    sampler: samplePeacefulGlassWave,
+    sampler: sampleStompDriveWave,
   },
 ];
 
