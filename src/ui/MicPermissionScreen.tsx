@@ -80,7 +80,7 @@ export function MicPermissionScreen({
             Dev mode: deterministic synthetic audio lets you test prompts and visuals without a mic.
           </p>
           <p className="mt-2 text-[11px] text-white/35">
-            Preview clips (sonified approximation of the synthetic feature pattern):
+            Preview clips (deterministic demo beats with different grooves/textures):
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {DEV_DEMO_AUDIO_CLIPS.map((clip) => (
