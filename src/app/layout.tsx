@@ -15,7 +15,10 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(getSiteUrl()),
-  title: "Qualia",
+  title: {
+    default: "Qualia",
+    template: "%s | Qualia",
+  },
   description: "Synesthetic music companion for deep listening.",
   icons: {
     icon: [
@@ -30,12 +33,15 @@ export const metadata: Metadata = {
     title: "Qualia",
     description: "Synesthetic music companion for deep listening.",
     type: "website",
+    url: "/",
+    siteName: "Qualia",
     images: [
       {
-        url: "/dashboardQualia.png",
+        url: "/og-card.jpg?v=1",
         width: 1200,
         height: 630,
-        alt: "Qualia",
+        type: "image/jpeg",
+        alt: "Qualia preview",
       },
     ],
   },
@@ -43,7 +49,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Qualia",
     description: "Synesthetic music companion for deep listening.",
-    images: ["/dashboardQualia.png"],
+    images: ["/og-card.jpg?v=1"],
   },
 };
 
