@@ -74,45 +74,53 @@ export async function GET(request: Request) {
     .eq("waitlist_signup_id", waitlistId)
     .maybeSingle();
 
-  if (!existingInvite) {
-    const rawToken = crypto.randomBytes(32).toString("hex");
-    const tokenHash = hashToken(rawToken);
-    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString();
+  if (existingInvite) {
+    return new NextResponse(renderHtml("Already approved. Invite was already sent."), {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    });
+  }
 
-    const { data: createdInvite } = await supabase
-      .from("beta_invites")
-      .insert({
-        waitlist_signup_id: waitlistId,
-        email: signup.email,
-        invite_token_hash: tokenHash,
-        expires_at: expiresAt,
-        sent_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const tokenHash = hashToken(rawToken);
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString();
 
-    const baseUrl = getSiteUrl();
-    const inviteUrl = `${baseUrl}/api/invite/accept?token=${rawToken}`;
-    try {
-      await sendInviteEmail({
-        recipientEmail: signup.email,
-        inviteUrl,
-      });
-    } catch {
-      // non-blocking: invite exists even if email fails
-    }
+  const { data: createdInvite, error: inviteInsertError } = await supabase
+    .from("beta_invites")
+    .insert({
+      waitlist_signup_id: waitlistId,
+      email: signup.email,
+      invite_token_hash: tokenHash,
+      expires_at: expiresAt,
+      sent_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
 
-    await supabase
-      .from("waitlist_signups")
-      .update({ invite_sent_at: new Date().toISOString() })
-      .eq("id", waitlistId);
+  if (inviteInsertError) {
+    return new NextResponse(renderHtml(`Invite creation failed: ${inviteInsertError.message}`), {
+      status: 500,
+      headers: { "content-type": "text/html" },
+    });
+  }
 
-    if (!createdInvite) {
-      return new NextResponse(renderHtml("Invite created, email queued."), {
-        status: 200,
-        headers: { "content-type": "text/html" },
-      });
-    }
+  const baseUrl = getSiteUrl();
+  const inviteUrl = `${baseUrl}/api/invite/accept?token=${rawToken}`;
+  await sendInviteEmail({
+    recipientEmail: signup.email,
+    inviteUrl,
+  });
+
+  await supabase
+    .from("waitlist_signups")
+    .update({ invite_sent_at: new Date().toISOString() })
+    .eq("id", waitlistId);
+
+  if (!createdInvite) {
+    return new NextResponse(renderHtml("Invite created, email queued."), {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    });
   }
 
   return new NextResponse(renderHtml("Approved and invite sent."), {
