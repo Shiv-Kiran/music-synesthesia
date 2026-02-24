@@ -5,14 +5,22 @@ import { applyVisualStateDelta, normalizeVisualState } from "@/contracts/normali
 import { PROMPT_LIBRARY, PROMPT_LIBRARY_VERSION, PROMPTS_BY_PHASE } from "@/content/prompts";
 
 describe("PROMPT_LIBRARY", () => {
-  it("ships the initial deterministic phases for Milestone A", () => {
-    expect(PROMPT_LIBRARY_VERSION).toBe(1);
+  it("ships a richer deterministic prompt library for beta testing", () => {
+    expect(PROMPT_LIBRARY_VERSION).toBe(2);
     expect(PROMPT_LIBRARY.map((prompt) => prompt.phase)).toEqual([
       "grounding",
       "temperature",
+      "texture",
+      "space",
+      "taste",
+      "narrative",
     ]);
     expect(PROMPTS_BY_PHASE.grounding).toBeDefined();
     expect(PROMPTS_BY_PHASE.temperature).toBeDefined();
+    expect(PROMPTS_BY_PHASE.texture).toBeDefined();
+    expect(PROMPTS_BY_PHASE.space).toBeDefined();
+    expect(PROMPTS_BY_PHASE.taste).toBeDefined();
+    expect(PROMPTS_BY_PHASE.narrative).toBeDefined();
   });
 
   it("keeps chip definitions and chip delta mappings aligned", () => {
@@ -20,8 +28,8 @@ describe("PROMPT_LIBRARY", () => {
       const chipIds = prompt.chips.map((chip) => chip.id).sort();
       const mappedIds = Object.keys(prompt.chip_delta_map).sort();
 
-      expect(prompt.variants.length).toBeGreaterThanOrEqual(3);
-      expect(chipIds.length).toBeGreaterThanOrEqual(4);
+      expect(prompt.variants.length).toBeGreaterThanOrEqual(6);
+      expect(chipIds.length).toBe(4);
       expect(mappedIds).toEqual(chipIds);
 
       for (const chip of prompt.chips) {
@@ -42,4 +50,3 @@ describe("PROMPT_LIBRARY", () => {
     }
   });
 });
-
