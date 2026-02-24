@@ -1,0 +1,22 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#070510"/>
+      <stop offset="55%" stop-color="#24154a"/>
+      <stop offset="100%" stop-color="#3a2f6d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.4" r="0.6">
+      <stop offset="0%" stop-color="#d4c9ff" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#070510" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <text x="90" y="200" fill="#F4F0FF" font-family="Inter, Arial, sans-serif" font-size="64" font-weight="600">Qualia</text>
+  <text x="90" y="265" fill="#C9BFFF" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="400">
+    Synesthetic music companion for deep listening
+  </text>
+  <text x="90" y="330" fill="#B7ACFF" font-family="Inter, Arial, sans-serif" font-size="20" letter-spacing="6">
+    INVITE BETA
+  </text>
+</svg>
