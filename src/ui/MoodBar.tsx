@@ -31,6 +31,7 @@ export function MoodBar() {
   const [hovered, setHovered] = useState(false);
   const [dragging, setDragging] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef(false);
 
   const active = hovered || dragging;
   const handleLeftPercent = moodPoleToPercent(moodPole);
@@ -70,22 +71,24 @@ export function MoodBar() {
             backgroundColor: active ? "rgba(0,0,0,0.42)" : "rgba(0,0,0,0.3)",
             borderColor: active ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.08)",
             transform: active ? "translateY(0)" : "translateY(1px)",
+            touchAction: "none",
           }}
           onPointerEnter={() => setHovered(true)}
           onPointerLeave={() => {
-            if (!dragging) {
+            if (!draggingRef.current) {
               setHovered(false);
             }
           }}
           onPointerDown={(event) => {
             event.preventDefault();
             event.currentTarget.setPointerCapture(event.pointerId);
+            draggingRef.current = true;
             setDragging(true);
             setHovered(true);
             updateFromClientX(event.clientX);
           }}
           onPointerMove={(event) => {
-            if (!dragging) {
+            if (!draggingRef.current) {
               return;
             }
             updateFromClientX(event.clientX);
@@ -94,12 +97,18 @@ export function MoodBar() {
             if (event.currentTarget.hasPointerCapture(event.pointerId)) {
               event.currentTarget.releasePointerCapture(event.pointerId);
             }
+            draggingRef.current = false;
             setDragging(false);
           }}
           onPointerCancel={(event) => {
             if (event.currentTarget.hasPointerCapture(event.pointerId)) {
               event.currentTarget.releasePointerCapture(event.pointerId);
             }
+            draggingRef.current = false;
+            setDragging(false);
+          }}
+          onLostPointerCapture={() => {
+            draggingRef.current = false;
             setDragging(false);
           }}
           onKeyDown={(event) => {

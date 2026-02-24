@@ -37,6 +37,7 @@ export interface PromptMachineTickInput {
   session_elapsed_s: number;
   hold_pointer_near_prompt?: boolean;
   last_typing_activity_ms?: number | null;
+  force_start?: boolean;
   requested_trigger?: Extract<
     SnapshotTrigger,
     "time" | "energy_spike" | "drop" | "bpm_shift"
@@ -78,4 +79,3 @@ export interface PromptAudioContext {
   previous: AudioFeatures | null;
   gate: AudioGateState | null;
 }
-

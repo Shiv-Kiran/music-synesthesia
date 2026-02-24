@@ -18,14 +18,44 @@ export const PROMPT_REMOVE_MS = 35_000;
 export const PROMPT_GLOBAL_COOLDOWN_MS = 20_000;
 export const PROMPT_TYPING_HOLD_MS = 8_000;
 
-function deriveLifecycleForElapsed(elapsedVisibleMs: number): PromptMachineState["lifecycle"] {
-  if (elapsedVisibleMs < PROMPT_APPEAR_MS) {
+export interface PromptTimingProfile {
+  appear_ms: number;
+  soft_fade_start_ms: number;
+  timer_dot_ms: number;
+  dismiss_start_ms: number;
+  remove_ms: number;
+  global_cooldown_ms: number;
+}
+
+export const DEFAULT_PROMPT_TIMING_PROFILE: PromptTimingProfile = Object.freeze({
+  appear_ms: PROMPT_APPEAR_MS,
+  soft_fade_start_ms: PROMPT_SOFT_FADE_START_MS,
+  timer_dot_ms: PROMPT_TIMER_DOT_MS,
+  dismiss_start_ms: PROMPT_DISMISS_START_MS,
+  remove_ms: PROMPT_REMOVE_MS,
+  global_cooldown_ms: PROMPT_GLOBAL_COOLDOWN_MS,
+});
+
+export const TESTER_QUICK_PROMPT_TIMING_PROFILE: PromptTimingProfile = Object.freeze({
+  appear_ms: 350,
+  soft_fade_start_ms: 7_000,
+  timer_dot_ms: 11_000,
+  dismiss_start_ms: 14_000,
+  remove_ms: 16_000,
+  global_cooldown_ms: 5_000,
+});
+
+function deriveLifecycleForElapsed(
+  elapsedVisibleMs: number,
+  timing: PromptTimingProfile,
+): PromptMachineState["lifecycle"] {
+  if (elapsedVisibleMs < timing.appear_ms) {
     return "appearing";
   }
-  if (elapsedVisibleMs < PROMPT_SOFT_FADE_START_MS) {
+  if (elapsedVisibleMs < timing.soft_fade_start_ms) {
     return "visible";
   }
-  if (elapsedVisibleMs < PROMPT_REMOVE_MS) {
+  if (elapsedVisibleMs < timing.remove_ms) {
     return "fading";
   }
   return "gone";
@@ -83,24 +113,34 @@ export function createPromptMachineState(sessionStartedAtMs = 0): PromptMachineS
 function canStartPrompt(
   state: PromptMachineState,
   nowMs: number,
+  timing: PromptTimingProfile,
+  forceStart = false,
 ): boolean {
   if (state.active_prompt) {
     return false;
+  }
+
+  if (forceStart) {
+    return true;
   }
 
   if (state.last_prompt_started_at_ms === null) {
     return true;
   }
 
-  return nowMs - state.last_prompt_started_at_ms >= PROMPT_GLOBAL_COOLDOWN_MS;
+  return nowMs - state.last_prompt_started_at_ms >= timing.global_cooldown_ms;
 }
 
 export function tickPromptMachine(
   state: PromptMachineState,
   input: PromptMachineTickInput,
   definitions: PromptDefinition[],
+  options?: {
+    timing_profile?: PromptTimingProfile;
+  },
 ): PromptMachineTickResult {
   const events: PromptMachineEvent[] = [];
+  const timing = options?.timing_profile ?? DEFAULT_PROMPT_TIMING_PROFILE;
 
   let nextState: PromptMachineState = {
     ...state,
@@ -120,7 +160,7 @@ export function tickPromptMachine(
       elapsed_visible_ms: nextState.active_prompt.elapsed_visible_ms + elapsedDelta,
     };
 
-    const lifecycle = deriveLifecycleForElapsed(activePrompt.elapsed_visible_ms);
+    const lifecycle = deriveLifecycleForElapsed(activePrompt.elapsed_visible_ms, timing);
     if (lifecycle === "gone") {
       nextState = {
         ...nextState,
@@ -143,7 +183,7 @@ export function tickPromptMachine(
   }
 
   const trigger = input.requested_trigger ?? null;
-  if (!trigger || !canStartPrompt(nextState, input.now_ms)) {
+  if (!trigger || !canStartPrompt(nextState, input.now_ms, timing, input.force_start === true)) {
     return {
       state: nextState,
       events,
@@ -171,7 +211,7 @@ export function tickPromptMachine(
     (nextState.shown_count_by_definition[definition.id] ?? 0) + 1;
   nextState.active_prompt = prompt;
   nextState.last_prompt_started_at_ms = input.now_ms;
-  nextState.lifecycle = deriveLifecycleForElapsed(prompt.elapsed_visible_ms);
+  nextState.lifecycle = deriveLifecycleForElapsed(prompt.elapsed_visible_ms, timing);
 
   events.push({
     type: "prompt_shown",
@@ -225,7 +265,10 @@ export function respondToPrompt(
   };
 }
 
-export function getPromptUiMeta(state: PromptMachineState): {
+export function getPromptUiMeta(
+  state: PromptMachineState,
+  timing: PromptTimingProfile = DEFAULT_PROMPT_TIMING_PROFILE,
+): {
   timer_dot_visible: boolean;
   dismiss_started: boolean;
   soft_fade_started: boolean;
@@ -234,9 +277,9 @@ export function getPromptUiMeta(state: PromptMachineState): {
   const prompt = state.active_prompt;
   const elapsed = prompt?.elapsed_visible_ms ?? 0;
   return {
-    timer_dot_visible: elapsed >= PROMPT_TIMER_DOT_MS,
-    dismiss_started: elapsed >= PROMPT_DISMISS_START_MS,
-    soft_fade_started: elapsed >= PROMPT_SOFT_FADE_START_MS,
+    timer_dot_visible: elapsed >= timing.timer_dot_ms,
+    dismiss_started: elapsed >= timing.dismiss_start_ms,
+    soft_fade_started: elapsed >= timing.soft_fade_start_ms,
     hold_timer: false,
   };
 }
