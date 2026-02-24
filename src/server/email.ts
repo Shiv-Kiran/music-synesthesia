@@ -66,13 +66,13 @@ export async function sendWaitlistWelcomeEmail(params: {
   await sendEmailOrThrow({
     from: getFromAddress("Shiv from Qualia"),
     to: params.recipientEmail,
-    subject: "Welcome to Qualia (invite beta)",
+    subject: "you're on the list. Qualia",
     html: `
-      <p>Hey ${firstName},</p>
-      <p>Thanks for joining the Qualia waitlist.</p>
-      <p>I'm Shiv. Appreciate you being early.</p>
-      <p>I'll send invites in small batches. When yours is ready, you'll get a direct link to jump in and enjoy.</p>
-      <p>- Shiv</p>
+      <p>hey ${firstName},</p>
+      <p>you're on the list.</p>
+      <p>i'm shiv. i'm building qualia for people who feel music differently. you're one of them.</p>
+      <p>invites go out slowly, on purpose. when yours is ready — you'll know.</p>
+      <p>— shiv</p>
     `,
   });
 }
@@ -84,11 +84,11 @@ export async function sendInviteEmail(params: {
   await sendEmailOrThrow({
     from: getFromAddress("Qualia"),
     to: params.recipientEmail,
-    subject: "You're invited to Qualia",
+    subject: "it's time.",
     html: `
-      <p>Your invite is ready. Let your Synesthesia Explode</p>
-      <p><a href="${params.inviteUrl}">Enter Qualia</a></p>
-      <p>If the link doesn't work, copy and paste it into your browser.</p>
+      <p>you're in.</p>
+      <p>feel the music</p>
+      <p><a href="${params.inviteUrl}">enter qualia</a></p>
     `,
   });
 }
