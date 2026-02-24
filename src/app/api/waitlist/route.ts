@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getSiteUrl } from "@/lib/site-url";
-import { sendOwnerWaitlistEmail } from "@/server/email";
+import { sendOwnerWaitlistEmail, sendWaitlistWelcomeEmail } from "@/server/email";
 import { optionalEnv, requireEnv } from "@/server/env";
 import { getSupabaseAdminClient } from "@/server/supabase";
 import { signToken } from "@/server/tokens";
@@ -53,8 +53,17 @@ export async function POST(request: Request) {
     }
 
     const ownerEmail = optionalEnv("OWNER_EMAIL");
-    const secret = optionalEnv("ADMIN_ACTION_SECRET") ?? requireEnv("BETA_COOKIE_SECRET");
+    try {
+      await sendWaitlistWelcomeEmail({
+        recipientEmail: email,
+        recipientName: name,
+      });
+    } catch {
+      // non-blocking: signup should still succeed if email delivery is unavailable
+    }
+
     if (ownerEmail) {
+      const secret = optionalEnv("ADMIN_ACTION_SECRET") ?? requireEnv("BETA_COOKIE_SECRET");
       const baseUrl = getSiteUrl();
       const approveToken = signToken(
         { action: "approve", waitlistId: inserted.id, email },
