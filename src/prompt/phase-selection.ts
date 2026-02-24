@@ -6,6 +6,8 @@ export interface PromptSelectionInput {
   trigger: Extract<SnapshotTrigger, "time" | "energy_spike" | "drop" | "bpm_shift">;
   now_ms: number;
   session_elapsed_s: number;
+  ignore_min_t?: boolean;
+  ignore_frequency?: boolean;
 }
 
 function definitionSupportsTrigger(
@@ -23,7 +25,11 @@ function definitionSupportsTrigger(
 function definitionMinTimeSatisfied(
   definition: PromptDefinition,
   sessionElapsedS: number,
+  ignoreMinTime = false,
 ): boolean {
+  if (ignoreMinTime) {
+    return true;
+  }
   const minT = definition.trigger_hints?.min_t;
   return typeof minT !== "number" ? true : sessionElapsedS >= minT;
 }
@@ -32,7 +38,11 @@ function definitionFrequencySatisfied(
   definition: PromptDefinition,
   state: PromptMachineState,
   nowMs: number,
+  ignoreFrequency = false,
 ): boolean {
+  if (ignoreFrequency) {
+    return true;
+  }
   const maxFreqS = definition.trigger_hints?.max_freq_s;
   const lastShownCount = state.shown_count_by_definition[definition.id] ?? 0;
   if (!lastShownCount) {
@@ -58,9 +68,9 @@ export function selectPromptDefinition(
 ): PromptDefinition | null {
   const eligible = definitions.filter((definition) => {
     return (
-      definitionMinTimeSatisfied(definition, input.session_elapsed_s) &&
+      definitionMinTimeSatisfied(definition, input.session_elapsed_s, input.ignore_min_t) &&
       definitionSupportsTrigger(definition, input.trigger) &&
-      definitionFrequencySatisfied(definition, state, input.now_ms)
+      definitionFrequencySatisfied(definition, state, input.now_ms, input.ignore_frequency)
     );
   });
 

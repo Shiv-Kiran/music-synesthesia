@@ -2,13 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { PROMPT_LIBRARY } from "@/content/prompts";
 import {
-  DEFAULT_PROMPT_TIMING_PROFILE,
   PROMPT_DISMISS_START_MS,
   PROMPT_GLOBAL_COOLDOWN_MS,
   PROMPT_REMOVE_MS,
   PROMPT_SOFT_FADE_START_MS,
   PROMPT_TIMER_DOT_MS,
-  TESTER_QUICK_PROMPT_TIMING_PROFILE,
   createPromptMachineState,
   respondToPrompt,
   tickPromptMachine,
@@ -185,32 +183,6 @@ describe("prompt machine", () => {
     }
   });
 
-  it("supports faster tester timing profiles for prompt lifecycle timing", () => {
-    let base = createPromptMachineState(0);
-    base = tickPromptMachine(
-      base,
-      { now_ms: 20_000, session_elapsed_s: 20, requested_trigger: "time" },
-      PROMPT_LIBRARY,
-    ).state;
-
-    const quick = tickPromptMachine(
-      base,
-      { now_ms: 37_000, session_elapsed_s: 37 },
-      PROMPT_LIBRARY,
-      { timing_profile: TESTER_QUICK_PROMPT_TIMING_PROFILE },
-    );
-    expect(quick.state.lifecycle).toBe("idle");
-
-    const normal = tickPromptMachine(
-      base,
-      { now_ms: 37_000, session_elapsed_s: 37 },
-      PROMPT_LIBRARY,
-      { timing_profile: DEFAULT_PROMPT_TIMING_PROFILE },
-    );
-    expect(normal.state.active_prompt).not.toBeNull();
-    expect(normal.state.lifecycle).toBe("fading");
-  });
-
   it("can force-start a prompt despite cooldown when requested", () => {
     let state = createPromptMachineState(0);
     state = tickPromptMachine(
@@ -228,7 +200,7 @@ describe("prompt machine", () => {
       state,
       {
         now_ms: 91_000,
-        session_elapsed_s: 91,
+        session_elapsed_s: 1,
         requested_trigger: "time",
         force_start: true,
       },
