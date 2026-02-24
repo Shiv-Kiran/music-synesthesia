@@ -37,7 +37,7 @@ export const metadata: Metadata = {
     siteName: "Qualia",
     images: [
       {
-        url: "/og-card.jpg?v=1",
+        url: "/og-card-v3.jpg",
         width: 1200,
         height: 630,
         type: "image/jpeg",
@@ -49,7 +49,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Qualia",
     description: "Synesthetic music companion for deep listening.",
-    images: ["/og-card.jpg?v=1"],
+    images: ["/og-card-v3.jpg"],
   },
 };
 
