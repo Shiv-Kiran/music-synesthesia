@@ -8,7 +8,7 @@ import crypto from "crypto";
 
 import { hashToken, verifyToken } from "@/server/tokens";
 
-interface AdminActionPayload {
+interface AdminActionPayload extends Record<string, unknown> {
   action?: "approve" | "reject";
   waitlistId?: string;
   email?: string;
