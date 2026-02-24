@@ -40,7 +40,6 @@ import {
   createPromptMachineState,
   DEFAULT_PROMPT_TIMING_PROFILE,
   respondToPrompt,
-  TESTER_QUICK_PROMPT_TIMING_PROFILE,
   tickPromptMachine,
 } from "@/prompt/machine";
 import { detectPromptAudioEvent } from "@/prompt/triggers";
@@ -116,67 +115,6 @@ interface LastKnownPromptMeta {
 }
 
 const DEFAULT_FIRST_PROMPT_MIN_ELAPSED_S = 20;
-const TESTER_QUICK_FIRST_PROMPT_MIN_ELAPSED_S = 3;
-
-const QUICK_PHASE_MIN_T: Partial<Record<PromptPhase, number>> = {
-  temperature: 0,
-  grounding: 4,
-  texture: 8,
-  space: 12,
-  taste: 16,
-  narrative: 20,
-  "free-word": 24,
-};
-
-function clampPromptTriggerHintsForQuickMode(definition: PromptDefinition): PromptDefinition {
-  const hintedMinT = QUICK_PHASE_MIN_T[definition.phase];
-  const nextMinT =
-    typeof hintedMinT === "number"
-      ? Math.min(definition.trigger_hints?.min_t ?? hintedMinT, hintedMinT)
-      : definition.trigger_hints?.min_t;
-  const nextMaxFreq =
-    typeof definition.trigger_hints?.max_freq_s === "number"
-      ? Math.min(definition.trigger_hints.max_freq_s, 45)
-      : 45;
-
-  return {
-    ...definition,
-    trigger_hints: {
-      ...definition.trigger_hints,
-      ...(typeof nextMinT === "number" ? { min_t: nextMinT } : {}),
-      max_freq_s: nextMaxFreq,
-    },
-  };
-}
-
-function getPromptLibraryForMode(
-  quickMode: boolean,
-  baseLibrary: PromptDefinition[],
-): PromptDefinition[] {
-  if (!quickMode) {
-    return baseLibrary;
-  }
-
-  const orderRank: Record<PromptPhase, number> = {
-    temperature: 0,
-    grounding: 1,
-    texture: 2,
-    space: 3,
-    taste: 4,
-    narrative: 5,
-    "free-word": 6,
-  };
-
-  return baseLibrary
-    .map(clampPromptTriggerHintsForQuickMode)
-    .sort((a, b) => {
-      const phaseDelta = (orderRank[a.phase] ?? 99) - (orderRank[b.phase] ?? 99);
-      if (phaseDelta !== 0) {
-        return phaseDelta;
-      }
-      return a.id.localeCompare(b.id);
-    });
-}
 
 function promptDeltaTouchesMoodPole(definition: PromptDefinition | undefined, chipId: string): boolean {
   const delta = definition?.chip_delta_map?.[chipId];
@@ -273,9 +211,6 @@ export function MicSessionFlow() {
   );
   const [promptZoneHeld, setPromptZoneHeld] = useState(false);
   const [lastPromptResponse, setLastPromptResponse] = useState<PromptResponseDebug | null>(null);
-  const [testerQuickPromptMode, setTesterQuickPromptMode] = useState(
-    process.env.NODE_ENV !== "production",
-  );
 
   const micControllerRef = useRef<MicInputController | null>(null);
   const syntheticAudioSourceRef = useRef<SyntheticAudioSource | null>(null);
@@ -297,7 +232,6 @@ export function MicSessionFlow() {
   const previousAudioFeaturesForPromptRef = useRef<AudioFeatures | null>(null);
   const lastPromptUiSyncAtRef = useRef<number>(0);
   const promptZoneHeldRef = useRef(false);
-  const testerQuickPromptModeRef = useRef<boolean>(process.env.NODE_ENV !== "production");
   const manualNextPromptRequestedRef = useRef(false);
   const suppressMoodSnapshotsUntilRef = useRef<number>(0);
   const sessionRecorderRef = useRef<SessionRecorder>(createSessionRecorder());
@@ -335,10 +269,6 @@ export function MicSessionFlow() {
     () => null,
   );
   const devBypassEnabled = process.env.NODE_ENV !== "production";
-
-  useEffect(() => {
-    testerQuickPromptModeRef.current = testerQuickPromptMode;
-  }, [testerQuickPromptMode]);
 
   function stopLoop() {
     if (rafRef.current !== null) {
@@ -596,6 +526,26 @@ export function MicSessionFlow() {
     setPromptMachineState(nextPromptState);
     setPromptZoneHeld(false);
     setLastPromptResponse(null);
+  };
+
+  const dismissActivePrompt = (nowMs: number) => {
+    const current = promptMachineRef.current;
+    if (!current.active_prompt) {
+      return;
+    }
+
+    const nextState: PromptMachineState = {
+      ...current,
+      lifecycle: "idle",
+      active_prompt: null,
+      last_tick_ms: nowMs,
+      last_prompt_ended_at_ms: nowMs,
+    };
+    promptMachineRef.current = nextState;
+    lastKnownPromptMetaRef.current = { phase: null, text: "" };
+    promptZoneHeldRef.current = false;
+    setPromptZoneHeld(false);
+    setPromptMachineState(nextState);
   };
 
   const syncPromptUiState = (
@@ -1101,23 +1051,18 @@ export function MicSessionFlow() {
       });
       previousAudioFeaturesForPromptRef.current = frame.features;
 
-      const quickPromptMode = testerQuickPromptModeRef.current;
       const manualNextPromptRequested = manualNextPromptRequestedRef.current;
       if (manualNextPromptRequested) {
         manualNextPromptRequestedRef.current = false;
       }
-      const firstPromptMinElapsedS = quickPromptMode
-        ? TESTER_QUICK_FIRST_PROMPT_MIN_ELAPSED_S
-        : DEFAULT_FIRST_PROMPT_MIN_ELAPSED_S;
+      const firstPromptMinElapsedS = DEFAULT_FIRST_PROMPT_MIN_ELAPSED_S;
       const requestedPromptTrigger =
         manualNextPromptRequested
           ? "time"
           : detectedPromptAudioEvent ?? (sessionElapsedS >= firstPromptMinElapsedS ? "time" : null);
 
-      const promptDefinitions = getPromptLibraryForMode(quickPromptMode, PROMPT_LIBRARY);
-      const promptTimingProfile = quickPromptMode
-        ? TESTER_QUICK_PROMPT_TIMING_PROFILE
-        : DEFAULT_PROMPT_TIMING_PROFILE;
+      const promptDefinitions = PROMPT_LIBRARY;
+      const promptTimingProfile = DEFAULT_PROMPT_TIMING_PROFILE;
       const promptTickResult = tickPromptMachine(
         previousPromptState,
         {
@@ -1427,10 +1372,22 @@ export function MicSessionFlow() {
     if (phase !== "ready") {
       return;
     }
-    if (promptMachineRef.current.active_prompt) {
+    const nowMs = getNowMs();
+    dismissActivePrompt(nowMs);
+    manualNextPromptRequestedRef.current = true;
+  };
+
+  const handleRecalibrate = () => {
+    if (phase !== "ready") {
       return;
     }
-    manualNextPromptRequestedRef.current = true;
+    if (!inputModeRef.current) {
+      return;
+    }
+    const nowMs = getNowMs();
+    dismissActivePrompt(nowMs);
+    setPermissionError(null);
+    startCalibrationLoop();
   };
 
   return (
@@ -1443,6 +1400,25 @@ export function MicSessionFlow() {
       {devBypassEnabled ? (
         <div className="absolute top-3 left-3 z-20">
           <VisualizerPresetToggle />
+        </div>
+      ) : null}
+
+      {phase === "ready" ? (
+        <div className="pointer-events-none absolute top-4 right-4 z-20">
+          <div className="pointer-events-auto group relative">
+            <button
+              type="button"
+              onClick={handleRecalibrate}
+              className="grid h-9 w-9 place-items-center rounded-full border border-white/20 bg-black/40 text-sm text-white/80 backdrop-blur transition hover:border-white/40 hover:bg-black/55"
+              aria-label="Recalibrate mic"
+              title="Recalibrate mic"
+            >
+              ↻
+            </button>
+            <div className="pointer-events-none absolute right-0 -top-7 rounded-full border border-white/10 bg-black/70 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/70 opacity-0 transition group-hover:opacity-100">
+              recalibrate
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -1569,47 +1545,19 @@ export function MicSessionFlow() {
           prompt={promptMachineState.active_prompt}
           lifecycle={promptMachineState.lifecycle}
           holdTimer={promptZoneHeld}
-          timerDotMs={
-            testerQuickPromptMode
-              ? TESTER_QUICK_PROMPT_TIMING_PROFILE.timer_dot_ms
-              : DEFAULT_PROMPT_TIMING_PROFILE.timer_dot_ms
-          }
-          removeMs={
-            testerQuickPromptMode
-              ? TESTER_QUICK_PROMPT_TIMING_PROFILE.remove_ms
-              : DEFAULT_PROMPT_TIMING_PROFILE.remove_ms
-          }
+          timerDotMs={DEFAULT_PROMPT_TIMING_PROFILE.timer_dot_ms}
+          removeMs={DEFAULT_PROMPT_TIMING_PROFILE.remove_ms}
           onChipSelect={handlePromptChipSelect}
           onPromptZoneHoldChange={handlePromptZoneHoldChange}
         />
       ) : null}
 
-      {phase === "ready" && devBypassEnabled ? (
+      {phase === "ready" ? (
         <div className="pointer-events-none absolute right-4 bottom-24 z-20 sm:right-6 sm:bottom-28">
           <div className="pointer-events-auto flex items-center gap-2 rounded-2xl border border-white/10 bg-black/35 px-2 py-2 backdrop-blur-md">
             <button
               type="button"
-              onClick={() => setTesterQuickPromptMode((value) => !value)}
-              className="rounded-full border px-2.5 py-1 text-[10px] tracking-[0.14em] uppercase transition"
-              style={{
-                borderColor: testerQuickPromptMode
-                  ? "rgba(255,255,255,0.26)"
-                  : "rgba(255,255,255,0.1)",
-                background: testerQuickPromptMode
-                  ? "rgba(255,255,255,0.1)"
-                  : "rgba(255,255,255,0.04)",
-                color: testerQuickPromptMode
-                  ? "rgba(255,255,255,0.92)"
-                  : "rgba(255,255,255,0.6)",
-              }}
-              title="Tester quick prompt mode (faster cadence + temperature-first)"
-            >
-              quick
-            </button>
-            <button
-              type="button"
               onClick={handleRequestNextPrompt}
-              disabled={promptMachineState.active_prompt !== null}
               className="grid h-8 w-8 place-items-center rounded-full border border-white/15 bg-white/5 text-sm text-white/80 transition hover:border-white/28 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45"
               title="Show the next prompt now"
               aria-label="Show next prompt"

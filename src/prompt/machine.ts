@@ -36,15 +36,6 @@ export const DEFAULT_PROMPT_TIMING_PROFILE: PromptTimingProfile = Object.freeze(
   global_cooldown_ms: PROMPT_GLOBAL_COOLDOWN_MS,
 });
 
-export const TESTER_QUICK_PROMPT_TIMING_PROFILE: PromptTimingProfile = Object.freeze({
-  appear_ms: 350,
-  soft_fade_start_ms: 7_000,
-  timer_dot_ms: 11_000,
-  dismiss_start_ms: 14_000,
-  remove_ms: 16_000,
-  global_cooldown_ms: 5_000,
-});
-
 function deriveLifecycleForElapsed(
   elapsedVisibleMs: number,
   timing: PromptTimingProfile,
@@ -194,6 +185,8 @@ export function tickPromptMachine(
     trigger,
     now_ms: input.now_ms,
     session_elapsed_s: input.session_elapsed_s,
+    ignore_min_t: input.force_start === true,
+    ignore_frequency: input.force_start === true,
   });
 
   if (!definition || definition.variants.length === 0 || definition.chips.length === 0) {
