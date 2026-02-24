@@ -271,7 +271,9 @@ export function MicSessionFlow() {
     () => isTabAudioCaptureSupported(),
     () => null,
   );
-  const devBypassEnabled = process.env.NODE_ENV !== "production";
+  const devUiEnabled = process.env.NEXT_PUBLIC_ENABLE_DEV_UI === "true";
+  const devBypassEnabled = devUiEnabled;
+  const minimalUiMode = !devUiEnabled;
 
   function stopLoop() {
     if (rafRef.current !== null) {
@@ -1488,7 +1490,15 @@ export function MicSessionFlow() {
           />
         ) : null}
 
-        {phase === "ready" ? (
+        {phase === "ready" && minimalUiMode ? (
+          <div className="mx-auto w-full max-w-xl text-center">
+            <div className="inline-flex items-center justify-center rounded-full border border-white/12 bg-black/28 px-6 py-3 backdrop-blur">
+              <span className="text-sm tracking-[0.34em] text-white/82 uppercase">Qualia</span>
+            </div>
+          </div>
+        ) : null}
+
+        {phase === "ready" && !minimalUiMode ? (
           <div className="mx-auto w-full max-w-xl rounded-3xl border border-white/10 bg-black/30 p-6 text-center backdrop-blur">
             <p className="text-xs tracking-[0.22em] text-white/45 uppercase">Qualia</p>
             <h2 className="mt-4 text-2xl font-semibold text-white sm:text-3xl">

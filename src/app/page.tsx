@@ -15,30 +15,32 @@ export default function Home() {
             Qualia
           </p>
           <h1 className="mt-4 text-3xl font-semibold leading-tight text-white sm:text-4xl">
-            A synesthetic music companion for deep listening.
+            some people feel music differently.
+            <br />
+            this is for them.
           </h1>
           <p className="mt-3 text-sm text-white/70 sm:text-base">
-            We listen through your mic (or a shared tab) to translate sound into
-            living visuals. No recording. Invite beta only.
+            qualia listens through your mic and builds a living visual world from how
+            you hear.
+            <br />
+            nothing recorded. nothing stored. just you and the music.
           </p>
 
           <div className="mt-6 flex flex-wrap items-center gap-3 text-xs text-white/60">
             <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">
-              low-latency visuals
+              feels the beat
             </span>
             <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">
-              deterministic prompts
+              asks how it sounds
             </span>
             <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">
-              no audio storage
+              never records
             </span>
           </div>
 
           <WaitlistForm />
 
-          <div className="mt-6 text-xs text-white/50">
-            Already invited? Use your invite link to enter the session.
-          </div>
+          <div className="mt-6 text-xs text-white/50">small list. slow invites. worth the wait.</div>
         </div>
       </div>
     </main>

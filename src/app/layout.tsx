@@ -17,13 +17,22 @@ export const metadata: Metadata = {
   metadataBase: new URL(getSiteUrl()),
   title: "Qualia",
   description: "Synesthetic music companion for deep listening.",
+  icons: {
+    icon: [
+      { url: "/QualiaIcon.png", type: "image/png" },
+    ],
+    apple: [
+      { url: "/QualiaIcon.png" },
+    ],
+    shortcut: ["/QualiaIcon.png"],
+  },
   openGraph: {
     title: "Qualia",
     description: "Synesthetic music companion for deep listening.",
     type: "website",
     images: [
       {
-        url: "/og.svg",
+        url: "/dashboardQualia.png",
         width: 1200,
         height: 630,
         alt: "Qualia",
@@ -34,7 +43,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Qualia",
     description: "Synesthetic music companion for deep listening.",
-    images: ["/og.svg"],
+    images: ["/dashboardQualia.png"],
   },
 };
 
