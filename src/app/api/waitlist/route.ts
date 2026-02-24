@@ -53,14 +53,14 @@ export async function POST(request: Request) {
     }
 
     const ownerEmail = optionalEnv("OWNER_EMAIL");
-    try {
-      await sendWaitlistWelcomeEmail({
-        recipientEmail: email,
-        recipientName: name,
-      });
-    } catch {
-      // non-blocking: signup should still succeed if email delivery is unavailable
-    }
+    await sendWaitlistWelcomeEmail({
+      recipientEmail: email,
+      recipientName: name,
+    });
+    await supabase
+      .from("waitlist_signups")
+      .update({ welcome_sent_at: new Date().toISOString() })
+      .eq("id", inserted.id);
 
     if (ownerEmail) {
       const secret = optionalEnv("ADMIN_ACTION_SECRET") ?? requireEnv("BETA_COOKIE_SECRET");
@@ -77,23 +77,25 @@ export async function POST(request: Request) {
       );
       const approveUrl = `${baseUrl}/api/admin/waitlist-action?token=${approveToken}`;
       const rejectUrl = `${baseUrl}/api/admin/waitlist-action?token=${rejectToken}`;
-      try {
-        await sendOwnerWaitlistEmail({
-          ownerEmail,
-          applicantEmail: email,
-          applicantName: name,
-          approveUrl,
-          rejectUrl,
-        });
-      } catch {
-        // non-blocking: waitlist entry is still stored
-      }
+      await sendOwnerWaitlistEmail({
+        ownerEmail,
+        applicantEmail: email,
+        applicantName: name,
+        approveUrl,
+        rejectUrl,
+      });
     }
 
     return NextResponse.json({ status: "ok" }, { status: 200 });
-  } catch {
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Could not save your signup.";
+    console.error("waitlist signup error", error);
     return NextResponse.json(
-      { message: "Could not save your signup." },
+      {
+        message:
+          process.env.NODE_ENV === "production" ? "Could not save your signup." : message,
+      },
       { status: 500 },
     );
   }

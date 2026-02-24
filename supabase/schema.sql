@@ -7,6 +7,7 @@ create table if not exists public.waitlist_signups (
   status text not null default 'pending',
   source text,
   created_at timestamptz not null default now(),
+  welcome_sent_at timestamptz,
   approved_at timestamptz,
   approved_by_email text,
   invite_sent_at timestamptz
@@ -41,3 +42,4 @@ create table if not exists public.sessions (
 
 create index if not exists sessions_client_session_id_idx on public.sessions(client_session_id);
 create index if not exists sessions_ended_at_idx on public.sessions(ended_at);
+create unique index if not exists beta_invites_waitlist_signup_id_idx on public.beta_invites(waitlist_signup_id);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 type WaitlistStatus = "idle" | "loading" | "success" | "exists" | "error";
 
@@ -9,12 +9,15 @@ export function WaitlistForm() {
   const [name, setName] = useState("");
   const [status, setStatus] = useState<WaitlistStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const submitInFlightRef = useRef(false);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (status === "loading") {
+    if (status === "loading" || submitInFlightRef.current) {
       return;
     }
+
+    submitInFlightRef.current = true;
     setStatus("loading");
     setMessage(null);
 
@@ -24,22 +27,27 @@ export function WaitlistForm() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email, name }),
       });
+
       const payload = (await response.json()) as { status?: string; message?: string };
       if (!response.ok) {
         setStatus("error");
         setMessage(payload.message ?? "Could not join the waitlist.");
         return;
       }
+
       if (payload.status === "exists") {
         setStatus("exists");
-        setMessage("You’re already on the list.");
+        setMessage("You're already on the list.");
         return;
       }
+
       setStatus("success");
-      setMessage("You’re on the list. Invite approvals go out by email.");
+      setMessage("You're on the list. Invite approvals go out by email.");
     } catch {
       setStatus("error");
       setMessage("Could not join the waitlist.");
+    } finally {
+      submitInFlightRef.current = false;
     }
   };
 
@@ -70,6 +78,7 @@ export function WaitlistForm() {
           className="w-full rounded-full border border-white/25 bg-black/45 px-4 py-3 text-sm text-white/90 placeholder:text-white/40 focus:border-white/45 focus:outline-none"
         />
       </div>
+
       <div className="flex items-center gap-3">
         <button
           type="submit"
@@ -78,13 +87,10 @@ export function WaitlistForm() {
         >
           {status === "loading" ? "joining..." : "join the waitlist"}
         </button>
-        <span className="text-xs text-white/50">
-          Invite beta. We approve manually.
-        </span>
+        <span className="text-xs text-white/50">Invite beta. We approve manually.</span>
       </div>
-      {message ? (
-        <p className="text-xs text-white/70">{message}</p>
-      ) : null}
+
+      {message ? <p className="text-xs text-white/70">{message}</p> : null}
     </form>
   );
 }
