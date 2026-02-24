@@ -35,6 +35,7 @@ import {
 } from "@/audio/mic";
 import type { AudioFeatures, AudioGateState } from "@/contracts/audio";
 import type { PromptDefinition, PromptPhase } from "@/contracts/prompt";
+import type { SessionFingerprint } from "@/contracts/session";
 import { PROMPT_LIBRARY } from "@/content/prompts";
 import {
   createPromptMachineState,
@@ -113,6 +114,8 @@ interface LastKnownPromptMeta {
   phase: PromptPhase | null;
   text: string;
 }
+
+const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? null;
 
 const DEFAULT_FIRST_PROMPT_MIN_ELAPSED_S = 20;
 
@@ -442,6 +445,7 @@ export function MicSessionFlow() {
       const finalized = recorder.end({ nowEpochMs: nowEpochTimeMs });
       if (finalized) {
         saveLastSession(finalized);
+        void sendSessionToServer(finalized);
         clearSessionDraft();
       }
     }
@@ -450,6 +454,22 @@ export function MicSessionFlow() {
     recorder.clear();
     lastKnownPromptMetaRef.current = { phase: null, text: "" };
     suppressMoodSnapshotsUntilRef.current = 0;
+  }
+
+  async function sendSessionToServer(session: SessionFingerprint) {
+    try {
+      await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          fingerprint: session,
+          input_mode: inputModeRef.current ?? null,
+          app_version: APP_VERSION,
+        }),
+      });
+    } catch {
+      // best-effort: local persistence is the primary fallback
+    }
   }
 
   useEffect(() => {
