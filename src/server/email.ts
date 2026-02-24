@@ -84,11 +84,10 @@ export async function sendInviteEmail(params: {
   await sendEmailOrThrow({
     from: getFromAddress("Qualia"),
     to: params.recipientEmail,
-    subject: "it's time.",
+    subject: "it's time. Qualia",
     html: `
       <p>you're in.</p>
-      <p>feel the music</p>
-      <p><a href="${params.inviteUrl}">enter qualia</a></p>
+      <p><a href="${params.inviteUrl}">enter qualia, your own nirvana</a></p>
     `,
   });
 }
