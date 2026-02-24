@@ -112,7 +112,7 @@ function cloneAudioSnapshot(snapshot: CompactAudioSnapshot): CompactAudioSnapsho
 
 function cloneSnapshotEvent(event: SnapshotEvent): SnapshotEvent {
   return {
-    t: event.t,
+    t: Number.isFinite(event.t) ? event.t : 0,
     trigger: event.trigger,
     prompt_phase: event.prompt_phase,
     prompt_text: event.prompt_text,
@@ -123,42 +123,82 @@ function cloneSnapshotEvent(event: SnapshotEvent): SnapshotEvent {
   };
 }
 
-function cloneSessionFingerprint(session: SessionFingerprint): SessionFingerprint {
+function maybeConvertLegacyTimelineMsToSeconds(session: SessionFingerprint): SessionFingerprint {
+  if (session.timeline.length === 0) {
+    return session;
+  }
+
+  const lastT = session.timeline.at(-1)?.t ?? 0;
+  if (!Number.isFinite(lastT) || lastT <= 0) {
+    return session;
+  }
+
+  const startedAtMs = parseIsoMs(session.started_at);
+  const endedAtMs = session.ended_at ? parseIsoMs(session.ended_at) : null;
+  const referenceNowMs = Date.now();
+  const elapsedMs =
+    startedAtMs === null
+      ? null
+      : Math.max(0, (endedAtMs ?? referenceNowMs) - startedAtMs);
+
+  // Legacy drafts in PR-09 wrote `t` in ms. Detect only when the recorded value is
+  // clearly on the ms scale relative to wall-clock duration.
+  const looksLikeLegacyMs =
+    lastT > 500 &&
+    (elapsedMs === null ? true : lastT > Math.max(1_000, elapsedMs * 1.5));
+
+  if (!looksLikeLegacyMs) {
+    return session;
+  }
+
   return {
     ...session,
-    timeline: session.timeline.map(cloneSnapshotEvent),
+    timeline: session.timeline.map((event) => ({
+      ...event,
+      t: Math.max(0, Math.round(event.t) / 1000),
+    })),
+  };
+}
+
+function cloneSessionFingerprint(session: SessionFingerprint): SessionFingerprint {
+  const normalizedUnitsSession = maybeConvertLegacyTimelineMsToSeconds(session);
+  return {
+    ...normalizedUnitsSession,
+    timeline: normalizedUnitsSession.timeline.map(cloneSnapshotEvent),
     initial_preset: normalizeVisualState(
-      session.initial_preset,
-      session.initial_preset._timestamp,
+      normalizedUnitsSession.initial_preset,
+      normalizedUnitsSession.initial_preset._timestamp,
     ),
     dominant_state: normalizeVisualState(
-      session.dominant_state,
-      session.dominant_state._timestamp,
+      normalizedUnitsSession.dominant_state,
+      normalizedUnitsSession.dominant_state._timestamp,
     ),
-    ...(session.music_context
+    ...(normalizedUnitsSession.music_context
       ? {
           music_context: {
-            ...session.music_context,
-            ...(session.music_context.songs_identified
+            ...normalizedUnitsSession.music_context,
+            ...(normalizedUnitsSession.music_context.songs_identified
               ? {
-                  songs_identified: session.music_context.songs_identified.map((song) => ({
+                  songs_identified: normalizedUnitsSession.music_context.songs_identified.map(
+                    (song) => ({
                     ...song,
-                  })),
+                    }),
+                  ),
                 }
               : {}),
-            ...(session.music_context.genre_hints
-              ? { genre_hints: [...session.music_context.genre_hints] }
+            ...(normalizedUnitsSession.music_context.genre_hints
+              ? { genre_hints: [...normalizedUnitsSession.music_context.genre_hints] }
               : {}),
           },
         }
       : {}),
-    ...(session.vibe_summary
+    ...(normalizedUnitsSession.vibe_summary
       ? {
           vibe_summary: {
-            ...session.vibe_summary,
-            palette: [...session.vibe_summary.palette],
-            tags: [...session.vibe_summary.tags],
-            intensity_curve: [...session.vibe_summary.intensity_curve],
+            ...normalizedUnitsSession.vibe_summary,
+            palette: [...normalizedUnitsSession.vibe_summary.palette],
+            tags: [...normalizedUnitsSession.vibe_summary.tags],
+            intensity_curve: [...normalizedUnitsSession.vibe_summary.intensity_curve],
           },
         }
       : {}),
@@ -186,15 +226,15 @@ function buildAudioSnapshot(
   };
 }
 
-function getSessionElapsedMs(startedAtIso: string, epochMs: number): number {
+function getSessionElapsedSeconds(startedAtIso: string, epochMs: number): number {
   const startedAtMs = parseIsoMs(startedAtIso);
   if (startedAtMs === null) {
     return 0;
   }
-  return Math.max(0, Math.trunc(epochMs - startedAtMs));
+  return Math.max(0, Math.round((epochMs - startedAtMs)) / 1000);
 }
 
-function getDerivedSessionDurationMs(
+function getDerivedSessionDurationSeconds(
   session: SessionFingerprint,
   fallbackNowEpochMs: number,
 ): number {
@@ -203,11 +243,11 @@ function getDerivedSessionDurationMs(
   const lastEventT = session.timeline.at(-1)?.t ?? 0;
 
   if (startedAtMs === null) {
-    return Math.max(lastEventT, 1);
+    return Math.max(lastEventT, 0.001);
   }
 
   const referenceEndMs = endedAtMs ?? fallbackNowEpochMs;
-  return Math.max(lastEventT, Math.trunc(referenceEndMs - startedAtMs), 1);
+  return Math.max(lastEventT, (referenceEndMs - startedAtMs) / 1000, 0.001);
 }
 
 function circularWeightedMean(values: Array<{ value: number; weight: number }>): number {
@@ -267,12 +307,15 @@ function deriveDominantState(
   }
 
   const sortedTimeline = [...session.timeline].sort((a, b) => a.t - b.t);
-  const sessionDurationMs = getDerivedSessionDurationMs(session, fallbackNowEpochMs);
+  const sessionDurationSeconds = getDerivedSessionDurationSeconds(
+    session,
+    fallbackNowEpochMs,
+  );
   const latestEvent = sortedTimeline[sortedTimeline.length - 1];
 
   const weightsByIndex = sortedTimeline.map((event, index) => {
-    const nextT = sortedTimeline[index + 1]?.t ?? sessionDurationMs;
-    const duration = Math.max(1, nextT - event.t);
+    const nextT = sortedTimeline[index + 1]?.t ?? sessionDurationSeconds;
+    const duration = Math.max(0.001, nextT - event.t);
     return duration;
   });
 
@@ -345,7 +388,7 @@ export function createSessionRecorder(): SessionRecorder {
       }
 
       const epochMs = input.nowEpochMs ?? nowEpochMs();
-      const baseT = getSessionElapsedMs(activeDraft.started_at, epochMs);
+      const baseT = getSessionElapsedSeconds(activeDraft.started_at, epochMs);
       const previousT = activeDraft.timeline.at(-1)?.t ?? 0;
       const t = Math.max(baseT, previousT);
 
@@ -386,4 +429,3 @@ export function createSessionRecorder(): SessionRecorder {
     },
   };
 }
-

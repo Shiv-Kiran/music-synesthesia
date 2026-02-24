@@ -6,6 +6,8 @@ export interface PromptOverlayProps {
   prompt: PromptInstance | null;
   lifecycle: PromptLifecycleState;
   holdTimer: boolean;
+  timerDotMs?: number;
+  removeMs?: number;
   onChipSelect: (chipId: string, chipLabel: string) => void;
   onPromptZoneHoldChange?: (held: boolean) => void;
 }
@@ -21,6 +23,8 @@ export function PromptOverlay({
   prompt,
   lifecycle,
   holdTimer,
+  timerDotMs = PROMPT_TIMER_DOT_MS,
+  removeMs = PROMPT_REMOVE_MS,
   onChipSelect,
   onPromptZoneHoldChange,
 }: PromptOverlayProps) {
@@ -29,10 +33,10 @@ export function PromptOverlay({
   }
 
   const elapsed = prompt.elapsed_visible_ms;
-  const timerVisible = elapsed >= PROMPT_TIMER_DOT_MS;
+  const timerVisible = elapsed >= timerDotMs;
   const timerProgress = timerVisible
     ? clamp(
-        1 - (elapsed - PROMPT_TIMER_DOT_MS) / (PROMPT_REMOVE_MS - PROMPT_TIMER_DOT_MS),
+        1 - (elapsed - timerDotMs) / (removeMs - timerDotMs),
         0,
         1,
       )
@@ -101,4 +105,3 @@ export function PromptOverlay({
     </div>
   );
 }
-

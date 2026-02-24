@@ -42,7 +42,7 @@ describe("session recorder", () => {
     });
 
     expect(snapshot).not.toBeNull();
-    expect(snapshot?.t).toBe(500);
+    expect(snapshot?.t).toBe(0.5);
     expect(snapshot?.prompt_phase).toBe("grounding");
     expect(snapshot?.prompt_text).toBe("");
     expect(snapshot?.user_response).toBe("");
@@ -84,7 +84,7 @@ describe("session recorder", () => {
       nowEpochMs: 11_100,
     });
 
-    expect(nextSnapshot?.t).toBe(1_100);
+    expect(nextSnapshot?.t).toBe(1.1);
     expect(nextSnapshot?.prompt_phase).toBe("temperature");
     expect(nextSnapshot?.user_response).toBe("warmer");
     expect(nextSnapshot?.response_latency_ms).toBe(420);
@@ -135,5 +135,40 @@ describe("session recorder", () => {
     });
 
     expect(snapshot).toBeNull();
+  });
+
+  it("converts legacy ms timeline values when resuming a saved draft", () => {
+    const recorder = createSessionRecorder();
+    const visual = makeVisual({}, 2_000);
+
+    const resumed = recorder.resumeDraft({
+      id: "legacy-ms",
+      started_at: new Date(1_000).toISOString(),
+      ended_at: new Date(1_500).toISOString(),
+      mode: "free",
+      timeline: [
+        {
+          t: 1500,
+          trigger: "time",
+          prompt_phase: "grounding",
+          prompt_text: "",
+          user_response: "",
+          response_latency_ms: 0,
+          visual_state: visual,
+          audio_snapshot: {
+            rms: 0,
+            bass_energy: 0,
+            mid_energy: 0,
+            high_energy: 0,
+            spectral_centroid: 0,
+            zero_crossing_rate: 0,
+          },
+        },
+      ],
+      initial_preset: visual,
+      dominant_state: visual,
+    });
+
+    expect(resumed.timeline[0]?.t).toBe(1.5);
   });
 });
