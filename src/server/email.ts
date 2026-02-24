@@ -66,13 +66,13 @@ export async function sendWaitlistWelcomeEmail(params: {
   await sendEmailOrThrow({
     from: getFromAddress("Shiv from Qualia"),
     to: params.recipientEmail,
-    subject: "you're on the list. Qualia",
+    subject: "you're on the list. qualia",
     html: `
       <p>hey ${firstName},</p>
       <p>you're on the list.</p>
       <p>i'm shiv. i'm building qualia for people who feel music differently. you're one of them.</p>
-      <p>invites go out slowly, on purpose. when yours is ready — you'll know.</p>
-      <p>— shiv</p>
+      <p>invites go out slowly, on purpose. when yours is ready - you'll know.</p>
+      <p>- shiv</p>
     `,
   });
 }
